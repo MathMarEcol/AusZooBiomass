@@ -5,13 +5,14 @@
 library(tidyverse)
 library(lubridate)
 library(janitor) # install.packages("janitor")
+
 library(maptools)
 data(wrld_simpl)
 
 dat <- readRDS("BiomassData.rds")
 
 library(sf)
-shapef <- "../ZoopAbundanceModels/WorldBorders/TM_WORLD_BORDERS-0.3.shp"
+shapef <- "../CommonResources/WorldBorders/TM_WORLD_BORDERS-0.3.shp"
 
 wb_sf <- read_sf(shapef)
 wb_sp <- as(wb_sf, "Spatial")
@@ -65,7 +66,6 @@ gg <- ggplot() +
 
 ggsave("Figures/BiomassDataDistribution_GearType.png", width = 297, height = 210, 
        units = "mm", dpi=300)
-
 
 
 ggfw <- gg +

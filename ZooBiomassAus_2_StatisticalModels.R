@@ -11,11 +11,11 @@ library(lmerTest) # p-levels for mixed models
 library(visreg)
 library(lubridate)
 
-source("../ZoopAbundanceModels/fHarmonic.R") # Harmonic function
+source("fHarmonic.R") # Harmonic function
 source("fPlotBiomassLM.R")
 source("fPlotBiomassLMERs.R")
 
-dat <- readRDS("BiomassData.rds") # n = 55,131
+dat <- readRDS("Data/BiomassData.rds") # n = 55,131
 dat <- dat %>% 
   mutate(
     Time = (hour(DateLocal) * 60 + minute(DateLocal) + second(DateLocal) / 60) / (24 * 60),
@@ -60,8 +60,8 @@ m1 <- lmer(log10(Biomass) ~ BiomassMethod + log10(Chl) +
 summary(m1)
 r.squaredGLMM(m1) # Fixed r2 = 71.4%, Total r2 = 87.4%
 fPlotBiomassLMERs(m1, "Biomass", "log10")
-dev.copy2pdf(file = "Biomass_Nets_Final.pdf", paper = "A4r")
-saveRDS(m1, "Biomass_Nets_Final.rds")
+dev.copy2pdf(file = "Figures/Biomass_Nets_Final.pdf", paper = "A4r")
+saveRDS(m1, "ModelOutput/Biomass_Nets_Final.rds")
 
 ############################################################
 ##### MODELS - CPR = LM (NO RANDOM EFFECT + NO GAMMA + ALL SAME SURVEY SO NO RANDOM EFFECT AND NO DEPTH) #####
@@ -72,10 +72,10 @@ m1 <- lm(log10(Biomass) ~ log10(Chl) +
 summary(m1) # r2 = 19.5%
 anova(m1)
 fPlotBiomassLM(m1, "Biomass_lm1")
-dev.copy2pdf(file = "Biomass_CPR_Final.pdf", paper = "A4r") #
+dev.copy2pdf(file = "Figures/Biomass_CPR_Final.pdf", paper = "A4r") #
 # par(mfrow = c(2,2))
 # plot(m1)
-saveRDS(m1, "Biomass_CPR_Final.rds")
+saveRDS(m1, "ModelOutput/Biomass_CPR_Final.rds")
 
 ##### MODELS - LOPC = LM (NO RANDOM EFFECT + NO GAMMA + FIXED EFFECT FOR OPC/LOPC) #####
 m1 <- lm(log10(Biomass) ~ LOPC_Type + log10(Chl) + 
@@ -85,10 +85,10 @@ m1 <- lm(log10(Biomass) ~ LOPC_Type + log10(Chl) +
 summary(m1) # r2 = 55.5%
 anova(m1)
 fPlotBiomassLM(m1, "Biomass_lm1")
-dev.copy2pdf(file = "Biomass_LOPC_Final.pdf", paper = "A4r") #
+dev.copy2pdf(file = "Figures/Biomass_LOPC_Final.pdf", paper = "A4r") #
 # par(mfrow = c(2,2))
 # plot(m1)
-saveRDS(m1, "Biomass_LOPC_Final.rds")
+saveRDS(m1, "ModelOutput/Biomass_LOPC_Final.rds")
 
 ##### ***MODELS - ALL = LMER (RANDOM EFFECT + NO GAMMA) #####
 m1 <- lmer(log10(Biomass) ~ BiomassMethod + log10(Chl) + 
@@ -97,8 +97,8 @@ m1 <- lmer(log10(Biomass) ~ BiomassMethod + log10(Chl) +
 summary(m1)
 r.squaredGLMM(m1) # Fixed r2 = 58.3%, Total r2 = 82.3%
 fPlotBiomassLMERs(m1, "Biomass", "log10")
-dev.copy2pdf(file = "Biomass_All_Final_UnequalWeighting.pdf", paper = "A4r") #
-saveRDS(m1, "Biomass_All_Final_UnequalWeighting.rds")
+dev.copy2pdf(file = "Figures/Biomass_All_Final_UnequalWeighting.pdf", paper = "A4r") #
+saveRDS(m1, "ModelOutput/Biomass_All_Final_UnequalWeighting.rds")
 
 # Give Nets, CPR and LOPC equal weighting
 Summary <- dat %>% group_by(NetType2) %>% 
@@ -117,5 +117,5 @@ m1 <- lmer(log10(Biomass) ~ BiomassMethod + log10(Chl) +
 summary(m1)
 r.squaredGLMM(m1) # Fixed r2 = 59.5%, Total r2 = 82.4%
 fPlotBiomassLMERs(m1, "Biomass", "log10")
-dev.copy2pdf(file = "BiomassModel_All_Final_EqualWeighting.pdf", paper = "A4r") #
-saveRDS(m1, "Biomass_All_Final_EqualWeighting.rds")
+dev.copy2pdf(file = "Figures/BiomassModel_All_Final_EqualWeighting.pdf", paper = "A4r") #
+saveRDS(m1, "ModelOutput/Biomass_All_Final_EqualWeighting.rds")
