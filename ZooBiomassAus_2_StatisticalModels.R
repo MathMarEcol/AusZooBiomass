@@ -58,6 +58,7 @@ m1 <- lmer(log10(Biomass) ~ BiomassMethod + log10(Chl) +
              fHarmonic(HarmTOD, k = 1) * exp(-Depth/1000) + ns(Bathy, df = 3) + 
              fHarmonic(HarmDOY, k = 1) * ns(SST, 3) + (1|Gear_Mes2), data = dat_Net)
 summary(m1)
+#
 r.squaredGLMM(m1) # Fixed r2 = 71.4%, Total r2 = 87.4%
 fPlotBiomassLMERs(m1, "Biomass", "log10")
 dev.copy2pdf(file = "Figures/Biomass_Nets_Final.pdf", paper = "A4r")
