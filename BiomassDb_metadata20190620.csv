@@ -1,0 +1,38 @@
+PROJECT_ID	PROJECT_NAME	START_DATE_LOCAL	END_DATE_LOCAL	CUSTODIAN_NAME	CUSTODIAN_AFFILIATION	ACKNOWLEDGEMENT	LOCATION	NO_RECORDS	CITATION
+"P_10"	"Albatross Bay, GOC, QLD 1986-1988"	"1986-03-10 00:00:00"	"1992-04-01 00:00:00"	"Peter Rothlisberg"	"CSIRO"	(null)	"Gulf of Carpentaria, Australia"	1540	"Jackson et al 2001"
+"P_1109"	"COPEPOD, NOAA"	"1932-05-03 00:00:00"	"2008-03-16 09:13:01"	"Todd O'Brien"	"NOAA"	"COPEPOD NOAA"	"Australia"	4665	"COPEPOD 2018"
+"P_1110"	"GOC & GAB 1965 & 1968"	"1965-12-20 00:00:00"	"1968-12-03 00:00:00"	"Motoda"	"Hokkaido University"	(null)	"Gulf of Carpentaria  & Great Australian Bight, Australia"	38	"Motoda, S. et al 1978"
+"P_11"	"Eddies off WA 2003"	"2003-10-03 07:52:00"	"2003-10-20 14:23:00"	"Joanna Strzelecki"	"CSIRO"	(null)	"Mid-west coast of Australia"	16	"Strzelecki et al 2007"
+"P_1090"	"CSIRO cruises 1959-62"	"1959-05-11 09:35:00"	"1962-02-13 08:21:00"	"CSIRO_literature"	"CSIRO"	"CSIRO O&A Data Centre"	"Australia"	439	"CSIRO Division of Fisheries and Oceanography 1962, 1963. 1964, 1967"
+"P_1106"	"BIONESS cruises 1992-93"	"1992-05-27 13:50:00"	"1993-06-11 19:46:00"	"Jock Young"	"CSIRO"	(null)	"East coast of Australia"	82	"Young et al. 1996"
+"P_3"	"Ramu, PNG 2009"	"2009-01-30 14:37:00"	"2009-02-06 20:17:00"	"Anthony Richardson"	"CSIRO"	(null)	"Papua New Guinea"	34	"Dennis et al 2009"
+"P_5"	"Kimberley, WA 2011-2014"	"2011-01-20 13:07:00"	"2014-03-21 07:41:00"	"David Mckinnon"	"AIMS"	(null)	"Kimberley, Western Australia, Australia"	264	"McKinnon et al 2015"
+"P_1135"	"LOPC Australia subset"	"2004-09-03 16:41:49"	"2008-10-19 15:48:21"	"Jason Everett"	"UNSW"	(null)	"East coast of Australia"	1358	(null)
+"P_1149"	"Storm Bay, Tasmania 2009-2015"	"2009-11-09 00:00:00"	"2015-03-10 00:00:00"	"Kerrie Swadling & Christine Crawford"	"IMAS"	(null)	"Tasmania, Australia"	407	"Swadling, K. M., et al. (2017)."
+"P_16"	"Arafura Sea, 2011"	"2011-12-02 08:00:00"	"2011-12-06 16:00:00"	"David Mckinnon"	"AIMS"	(null)	"Arafura Sea, Australia"	11	(null)
+"P_1111"	"Christmas Island 2006"	"2005-11-02 10:00:00"	"2006-10-23 10:38:00"	"Claire Davies"	"CSIRO"	(null)	"Christmas Island, Indian Ocean"	86	"Davies and Beckley 2010"
+"P_591"	"Moreton Bay, QLD 2009-2012"	"2009-01-14 11:40:00"	"2012-01-20 13:06:00"	"Sarah Pausina"	"UQ"	"Healthy Waterways ARC LPO883663"	"Moreton Bay, Queensland, Australia"	89	"Pausina (in prep.)"
+"P_2"	"Lihir, PNG 2006"	"2006-11-03 22:53:00"	"2006-11-19 02:06:20"	"Anthony Richardson"	"CSIRO"	(null)	"Papua New Guinea"	196	"Brewer et al 2012"
+"P_1098"	"Tropical Australia 63um 1987-2009"	"1987-10-10 10:33:00"	"2005-01-07 19:18:00"	"Miles Furnas"	"AIMS"	(null)	"Australia"	821	"Furnas et al. 1990"
+"P_1148"	"Storm Bay, Tasmania 1985-87"	"1985-03-07 12:00:00"	"1988-03-17 11:00:00"	"Lesley Clementson"	"CSIRO"	(null)	"Tasmania, Australia"	132	"Clementson, L. A., et al. 1989"
+"P_1112"	"Cronulla, NSW 1943-46"	"1943-01-02 08:00:00"	"1946-12-23 08:00:00"	"CSIRO"	"CSIRO"	(null)	"East coast of Australia"	133	"Sheard 1949"
+"P_15"	"GBR, QLD 2000-2002"	"2000-08-08 00:00:00"	"2002-03-23 08:30:00"	"David Mckinnon"	"AIMS"	(null)	"Great Barrier Reef, Queensland, Australia"	42	"McKinnon et al 2005"
+"P_21"	"East coast Tasmania 1971-1973"	"1971-08-19 10:45:00"	"1972-01-10 14:30:00"	"Kerrie Swadling"	"IMAS"	(null)	"Mid- east coast Tasmania, Australia"	92	"Taw 1975"
+"P_1142"	"East Indian Ocean 1987"	"1987-01-16 10:15:00"	"1987-02-02 23:31:00"	"CSIRO"	"CSIRO"	(null)	"East Indian Ocean"	302	"Davis and Clementson 1990"
+"P_597"	"IMOS AusCPR 2009-2017"	"2010-04-11 02:18:11"	"2019-03-15 22:33:43"	"Anthony Richardson"	"CSIRO"	"IMOS"	"Australia"	2088	"Richardson, A. J., et al. (2006)"
+"P_1092"	"DH cruises 1957"	"1957-03-20 00:15:00"	"1957-11-16 08:10:00"	"CSIRO_literature"	"CSIRO"	"CSIRO O&A Data Centre"	"East coast of Australia"	44	"CSIRO Division of Fisheries and Oceanography (1959)"
+"P_4"	"Darwin Harbour, NT 2002-2004"	"2002-12-11 00:00:00"	"2004-12-08 00:00:00"	"David Mckinnon"	"AIMS"	(null)	"Darwin, Northern Territory, Australia"	56	"Duggan et al 2008"
+"P_1088"	"Lady Elliot Island, GBR, QLD 2014"	"2014-02-10 08:41:00"	"2014-06-20 13:25:10"	"Asia Armstrong"	"UQ"	"UQ"	"Lady Elliot Island, Great Barrier Reef, Queensland, Australia"	90	"Armstrong et al. 2016"
+"P_1099"	"GOC 1975-77"	"1975-08-13 08:08:00"	"1977-05-12 17:31:00"	"CSIRO O&A Data Centre"	"CSIRO"	"CSIRO O&A Data Centre"	"Gulf of Carpentaria, Australia"	300	"Rothlisberg & Jackson 1982"
+"P_1091"	"Derwent Hunter East Australia 1960-62"	"1960-02-04 00:00:00"	"1962-05-16 10:00:00"	"CSIRO_literature"	"CSIRO"	"CSIRO O&A Data Centre"	"East coast of Australia"	171	"Crooks 1963; CSIRO Division of Fisheries and Oceanography 1968"
+"P_1105"	"Tranter cruises 1957-63"	"1957-07-26 00:00:00"	"1961-06-13 10:34:00"	"CSIRO"	"CSIRO"	(null)	"Australia"	1043	"Tranter 1962"
+"P_599"	"IMOS National Reference Stations 2009-2017"	"2008-09-29 10:30:00"	"2019-01-22 10:44:00"	"Anthony Richardson"	"CSIRO"	"IMOS"	"Darwin, Esperance, Kangaroo Island, Maria Island, Ningaloo, North Stradbroke Island, Yongala, Australia"	676	"Lynch, T. P., et al. (2008). "
+"P_1100"	"SS cruises Griffiths 1991-93"	"1991-06-30 00:06:00"	"1993-05-06 03:36:00"	"CSIRO O&A Data Centre"	"CSIRO"	"CSIRO O&A Data Centre"	"Australia"	104	"CMAR data centre C2012/7164"
+"P_1144"	"GAB Soela 1980-81"	"1980-04-30 18:30:00"	"1981-12-14 20:20:00"	"CSIRO"	"CSIRO"	(null)	"Great Australian Bight, Australia"	152	"Stevens et al 1984"
+"P_1143"	"GAB 2004-05"	"2004-02-18 08:00:00"	"2005-03-19 16:34:00"	"Paul van Ruth"	"SARDI"	"SARDI"	"Great Australian Bight, Australia"	39	"van Ruth, P. D. (2009) "
+"P_17"	"North West Cape, WA 1997-99 & 2002-03"	"1997-10-25 00:00:00"	"2003-05-07 00:00:00"	"David Mckinnon"	"AIMS"	(null)	"North West Cape, Western Australia, Australia"	172	"McKinnon et al 2008"
+"P_9"	"Bathurst Island, NT  2005-2006"	"2005-08-19 14:50:00"	"2006-02-25 09:40:00"	"David Mckinnon"	"AIMS"	(null)	"Bathurst Island, Northern Territory, Australia"	6	(null)
+"P_1108"	"JGOFS 1992-93"	"1992-06-19 05:54:00"	"1993-11-24 07:00:00"	"CSIRO"	"CSIRO"	(null)	"North coast of Australia"	42	"Australian Equatorial JGOFS Data Set, CSIRO 2000"
+"P_1101"	"QLD1976-78"	"1976-08-09 03:55:00"	"1978-12-18 10:37:00"	"C.Lonborg"	"AIMS"	"AIMS"	"Great Barrier Reef, Queensland, Australia"	177	"Ikeda  et al. 1980 "
+"P_1115"	"Marmion Lagoon, WA 2007-08"	"2007-02-19 09:34:00"	"2008-10-17 10:53:00"	"Joanna Strezlecki"	"CSIRO"	(null)	"Mid-west coast of Australia"	38	(null)
+"P_1089"	"Coral Sea, QLD 2011-2014"	"2011-10-31 10:35:00"	"2014-06-18 10:40:00"	"David Mckinnon"	"AIMS"	"AIMS"	"Coral Sea, Australia"	145	(null)
