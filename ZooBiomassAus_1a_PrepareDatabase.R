@@ -6,7 +6,7 @@ library(tidyverse)
 library(lubridate)
 library(janitor) # install.packages("janitor")
 
-source("../ZoopAbundanceModels/fAddEnviro.R")
+source("fAddEnviro.R")
 
 EnviroDir <- "../ZoopAbundanceModels/Data/EnvironmentalData"
 bathy_file <- paste0(EnviroDir,"/","GEBCO_2014_2D.nc")
@@ -15,7 +15,7 @@ dat1 <- read_delim("BiomassDatabase20190620.csv", delim = "\t", na = "(null)")
 dat1 <- dat1 %>% 
   filter(NET_TYPE!="Optical Plankton Counter (OPC-2T)") # Remove because I re-add it again with more data below.
 
-dat2 <- read_csv("MNF_LOPC_Biomass.csv", na = "NaN")
+dat2 <- read_csv("Data/MNF_LOPC_Biomass.csv", na = "NaN")
 dat2 <- dat2 %>% 
   mutate(SAMPLE_DATE_LOCAL = dmy_hms(SAMPLE_DATE_LOCAL),
          SAMPLE_DATE_UTC = dmy_hms(SAMPLE_DATE_UTC)) %>% 
@@ -76,7 +76,7 @@ dat <- dat %>% mutate(NetType2 = case_when(NetType == "LOPC" ~ "LOPC",
          Tow = as.factor(Tow))
 
 # Sort out Project for CPRs
-Routes <- read_csv("cpr_route.csv")
+Routes <- read_csv("Data/cpr_route.csv")
 dat <- left_join(dat, Routes, by = c("SampleID" = "SAMPLE_ID"))
 rm(Routes)
 
@@ -87,4 +87,4 @@ dat <- dat %>%
   dplyr::select(-ROUTE) %>% 
   mutate(Project = as.factor(Project))
 
-saveRDS(dat, file = "BiomassData.rds")
+saveRDS(dat, file = "Data/BiomassData.rds")
