@@ -70,8 +70,8 @@ for (i in 1:length(NthMonth)) {
   
 }
 
-
 saveRDS(stat_brick, file = "Biomass_Layer_Joint.rds")
+
 
 if (tframe == "annual") {
   stat_brick  <- calc(stat_brick, fun = mean)
@@ -97,8 +97,7 @@ for (i in 1:n){
 
   ## Do the plotting
   gg <- ggplot() +
-    geom_tile(data = data_df_long, aes_string(x = "x", y = "y", fill = names(data_df[i+2])),
-              frame = Month) +
+    geom_tile(data = data_df, aes_string(x = "x", y = "y", fill = names(data_df[i+2]))) +
     geom_polygon(fill = "white") +
     geom_polygon(data = wb_df, aes(x = long, y = lat, group = group)) +
     scale_fill_gradientn(name =  expression(paste("mg m"^-3)), colours = rev(col),
@@ -147,29 +146,29 @@ if (tframe=="annual"){
 
 
 
-
-## DO Change
-
-data_df$Diff <- (data_df$January-data_df$July)/data_df$January
-
-# ## Do the plotting
-gg <- ggplot() +
-  geom_tile(data = data_df, aes_string(x = "x", y = "y", fill = "Diff")) +
-  geom_polygon(fill = "white") +
-  geom_polygon(data = wb_df, aes(x = long, y = lat, group = group)) +
-  scale_fill_gradientn(name =  expression(paste("Proportion")), colours = rev(col),
-                       limits = c(0, 0.5), 
-                       # breaks = cticks,
-                       #labels = clabel, 
-                       position = "bottom",
-                       na.value = "grey50") +
-  {if (quick==1) coord_quickmap() else coord_map(projection = "mollweide") } +
-  theme_opts +
-  scale_alpha(range = c(-0, 0.5)) +
-  scale_x_continuous(expand = c(0, 0), limits = c(100, 170)) +
-  scale_y_continuous(expand = c(0, 0), limits = c(-45, 1))
-gg
-
-ggsave("Figures/AusBiomass_Annual_SeasonalChange.png", dpi=300, scale=1)
-
-
+# 
+# ## DO Change
+# 
+# data_df$Diff <- (data_df$January-data_df$July)/data_df$January
+# 
+# # ## Do the plotting
+# gg <- ggplot() +
+#   geom_tile(data = data_df, aes_string(x = "x", y = "y", fill = "Diff")) +
+#   geom_polygon(fill = "white") +
+#   geom_polygon(data = wb_df, aes(x = long, y = lat, group = group)) +
+#   scale_fill_gradientn(name =  expression(paste("Proportion")), colours = rev(col),
+#                        limits = c(0, 0.5), 
+#                        # breaks = cticks,
+#                        #labels = clabel, 
+#                        position = "bottom",
+#                        na.value = "grey50") +
+#   {if (quick==1) coord_quickmap() else coord_map(projection = "mollweide") } +
+#   theme_opts +
+#   scale_alpha(range = c(-0, 0.5)) +
+#   scale_x_continuous(expand = c(0, 0), limits = c(100, 170)) +
+#   scale_y_continuous(expand = c(0, 0), limits = c(-45, 1))
+# gg
+# 
+# ggsave("Figures/AusBiomass_Annual_SeasonalChange.png", dpi=300, scale=1)
+# 
+# 
