@@ -95,3 +95,5 @@ dat <- dat %>%
   mutate(Project = as.factor(Project))
 
 saveRDS(dat, file = "Data/BiomassData.rds")
+
+write_csv(dat,"Data/FinalBiomassData.csv")
