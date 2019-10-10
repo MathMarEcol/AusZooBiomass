@@ -94,6 +94,6 @@ dat <- dat %>%
   dplyr::select(-ROUTE) %>% 
   mutate(Project = as.factor(Project))
 
-saveRDS(dat, file = "Data/BiomassData.rds")
+saveRDS(dat, file = "Output/BiomassData.rds")
 
-write_csv(dat,"Data/FinalBiomassData.csv")
+write_csv(dat,"Output/FinalBiomassData.csv")
