@@ -8,7 +8,7 @@ library(ggpubr)
 library(splines)
 
 source("../ZoopAbundanceModels/fHarmonic.R")
-source("fPlotAusLMER.R")
+source("func/fPlotAusLMER.R")
 source("../ZoopAbundanceModels/fBuildRasterBrick.R")
 source("../ZoopAbundanceModels/fWorldBorders.R")
 

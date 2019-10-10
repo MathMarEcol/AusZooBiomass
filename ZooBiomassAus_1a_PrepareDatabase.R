@@ -7,7 +7,7 @@ library(tidyverse)
 library(lubridate)
 library(janitor) # install.packages("janitor")
 
-source("fAddEnviro.R")
+source("func/fAddEnviro.R")
 
 EnviroDir <- "~/Dropbox/EcosystemEfficiency/StatisticalModel/ZoopAbundanceModels/Data/EnvironmentalData"
 bathy_file <- paste0(EnviroDir,"/","GEBCO_2014_2D.nc")

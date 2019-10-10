@@ -11,9 +11,9 @@ library(lmerTest) # p-levels for mixed models
 library(visreg)
 library(lubridate)
 
-source("fHarmonic.R") # Harmonic function
-source("fPlotBiomassLM.R")
-source("fPlotBiomassLMERs.R")
+source("func/fHarmonic.R") # Harmonic function
+source("func/fPlotBiomassLM.R")
+source("func/fPlotBiomassLMERs.R")
 
 dat <- readRDS("Data/BiomassData.rds") # n = 55,131
 dat <- dat %>% 

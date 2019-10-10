@@ -6,10 +6,10 @@ library(ggpubr)
 library(splines)
 library(gganimate)
 
-source("fHarmonic.R")
-source("fPlotAusLMER.R")
-source("fBuildRasterBrick.R")
-source("fWorldBorders.R")
+source("func/fHarmonic.R")
+source("func/fPlotAusLMER.R")
+source("func/fBuildRasterBrick.R")
+source("func/fWorldBorders.R")
 
 
 # Set the max values to be removed in rasterbrick
