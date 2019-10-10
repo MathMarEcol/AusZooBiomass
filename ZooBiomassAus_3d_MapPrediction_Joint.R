@@ -18,7 +18,7 @@ res <- "one"
 ####################################################
 NthMonth <- c("01January", "02February","03March","04April","05May","06June",
               "07July","08August","09September","10October","11November","12December")
-  
+
 df <- data.frame(HarmTOD = 1, BiomassMethod = "Wet", 
                  Project = "1090", Depth = 10, Gear_Mes2 = "Bongo net_150")
 
