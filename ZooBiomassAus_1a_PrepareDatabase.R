@@ -54,6 +54,7 @@ dat <- dat %>%
          BiomassMethod = str_replace(BiomassMethod, "dry mass", "Dry"),
          BiomassMethod = str_replace(BiomassMethod, "displacement volume", "Displacement"),
          BiomassMethod = str_replace(BiomassMethod, "settled volume", "Settled"),
+         BiomassMethod = str_replace(BiomassMethod, "Estimated Wet Weight from BioVolume", "EstimatedWetWeight"),
          BiomassMethod = as.factor(BiomassMethod),
          Tow = str_replace(Tow,"horizontal tow", "Horizontal"),
          Tow = str_replace(Tow,"double oblique tow", "Oblique"),
@@ -75,7 +76,8 @@ sum(dat$Biomass == 0) # 212 from the LOPC - delete
 dat <- dat %>% 
   mutate(NetType2 = case_when(NetType == "LOPC" ~ "LOPC",
                               NetType == "Continuous plankton recorder" ~ "CPR",
-                              TRUE ~ "Net")) %>% 
+                              TRUE ~ "Net"),
+         NetType2 = as.factor(NetType2)) %>% 
   filter(Biomass > 0) %>% # n = 54,033
   mutate(Tow = as.character(Tow),
          Tow = replace(Tow, NetType == "Continuous plankton recorder", "Surface"),
@@ -94,6 +96,6 @@ dat <- dat %>%
   dplyr::select(-ROUTE) %>% 
   mutate(Project = as.factor(Project))
 
-saveRDS(dat, file = "Data/BiomassData.rds")
+saveRDS(dat, file = "Output/BiomassData.rds")
 
-write_csv(dat,"Data/FinalBiomassData.csv")
+write_csv(dat,"Output/FinalBiomassData.csv")
