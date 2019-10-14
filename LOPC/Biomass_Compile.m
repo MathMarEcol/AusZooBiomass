@@ -3,6 +3,18 @@ close all
 
 load("/Users/jason/UNSW/Projects/ZooplanktonDP/Projects/MissingLink/Output/MNF_Summary.mat")
 
+% Remove some voyages which aren't ready or have collaborators I need to
+% deal with.
+fi = find(strcmp('IN2014e03', tbl.Voyage)==0 & ...
+    strcmp('IN2016v01', tbl.Voyage)==0 & ...
+    strcmp('IN2016v02', tbl.Voyage)==0 & ...
+    strcmp('IN2019v02', tbl.Voyage)==0 & ...
+    tbl.Biomass ~= 0);% & ... % Remove the Zeros (there shouldn't be many now)
+%     tbl.Biomass < 10^5); % And the high values
+
+
+tbl = tbl(fi,:);
+
 tbl.datetimeUTC = datetime(tbl.datestr,'TimeZone','UTC');
 tbl.Unit2 = repmat("LOPC",height(tbl),1);
 tbl.Unit2(strcmp(tbl.Unit2,"OPC1T")==1 | strcmp(tbl.Unit2,"OPC2T")==1) = "OPC";
