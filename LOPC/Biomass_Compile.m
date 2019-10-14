@@ -12,9 +12,7 @@ fi = find(strcmp('IN2014e03', tbl.Voyage)==0 & ...
     tbl.Biomass ~= 0);% & ... % Remove the Zeros (there shouldn't be many now)
 %     tbl.Biomass < 10^5); % And the high values
 
-
 tbl = tbl(fi,:);
-
 tbl.datetimeUTC = datetime(tbl.datestr,'TimeZone','UTC');
 tbl.Unit2 = repmat("LOPC",height(tbl),1);
 tbl.Unit2(strcmp(tbl.Unit2,"OPC1T")==1 | strcmp(tbl.Unit2,"OPC2T")==1) = "OPC";
