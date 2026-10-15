@@ -1,227 +1,265 @@
-# Biomass analysis around Australia
-# Ant & Jase 4/7/2019
-# Data provided by Felicity 20/6/2019
+# Zooplankton Biomass — Statistical Models
+# Jason Everett
+# Updated: October 2026
 
-##### PRELIMINARIES #####
+# ── Libraries ──────────────────────────────────────────────────────────────────
 library(tidyverse)
 library(splines)
 library(lme4)
-library(MuMIn) # r2 for mixed models
-library(lmerTest) # p-levels for mixed models
-library(visreg)
-library(utils4mme)
-library(visreg)
+library(lmerTest) # p-values for lmer fixed effects
+library(utils4mme) # fHarmonic()
+library(marginaleffects) # covariate effect plots
+library(performance) # r2(), check_model(), compare_performance()
+library(see) # required backend for check_model() plots
+library(parameters) # tidy coefficient tables
+library(DHARMa) # simulation-based residuals for GLMMs
+library(patchwork) # multi-panel figure assembly
 
-source("func/fHarmonic.R") # Harmonic function
-source("func/fPlotBiomassLM.R")
+source("ZooBiomassAus_0_Utils.R")
 source("func/fPlotBiomassLMERs.R")
+source("func/fModelDiagnostics.R")
 
-# dat <- readRDS("Data/BiomassData.rds") # n = 55,131
-dat <- read_rds("../GlobalZoopBiomass/Output/dat_cleaned.rds") %>%
-  sf::st_as_sf(
-    coords = c("Longitude", "Latitude"),
-    remove = FALSE,
-    crs = "EPSG:4326"
-  )
 
-bndry <- sf::st_bbox(
-  c(xmin = 100, xmax = 170, ymax = -8, ymin = -50),
-  crs = sf::st_crs("EPSG:4326")
-) %>%
-  sf::st_as_sfc()
+# Load Data -----
+# Prepared `dat` in ZooBiomassAus_1a_PrepareDatabase.R
+dat <- read_csv(file = "Output/FinalBiomassData.csv") %>%
+  mutate(log10_Biomass = log10(Biomass))
 
-dat <- sf::st_filter(dat, bndry)
 
-## Filter for Australia!
+# Models -----
 
-#### Spatial model for Biomass ####
-# Use GLMM because can restrict the relationships a bit more where there are few data
-# Note: Chl only has about 10 unique values but Chl_gm3 has more
-
-system.time(
-  m1_map <- glmer(
-    Biomass ~ Method +
-      Mesh +
-      Tow +
-      log(Chl) +
-      ns(SST, df = 3) +
-      ns(Bathy, df = 2) +
-      harmonic(HarmTOD, k = 1) * ns(Depth, df = 3) +
-      ns(Latitude, 2) * harmonic(HarmDOY, k = 2) +
-      (1 | DatasetID) +
-      (1 | Gear),
-    family = Gamma(link = "log"),
-    data = dat,
-    control = glmerControl(
-      calc.derivs = FALSE,
-      optimizer = "nloptwrap",
-      optCtrl = list(algorithm = "NLOPT_LN_BOBYQA")
-    )
-  )
-  # harmonic(HarmDOY, k = 2)*ns(Thetao, df = 3)
-)
-#
-
-summary(m1_map)
-
-saveRDS(m1_map, "Output/m1_map.rds")
-
-r.squaredGLMM(m1_map) # Use trigamma. 70.3% fixed effects; 84.7% total (with random effects)
-
-# Check residuals
-lattice::qqmath(m1_map) # Terrible without removing very high values, but still pretty poor
-plot(m1_map, sqrt(abs(resid(.))) ~ fitted(.)) # Good fitted residuals, but some big ones at small values
-
-# Check distribution of random effects
-
-model <- readRDS("Output/m1_map.rds")
-
-fPlotBiomassLMERs(m1_map, "Biomass", "log10")
-
-# p_out <- PlotGLMM_Map(m1_map, FileName = "Plot_GLMM_m1_map")
-
-dat <- dat %>%
-  mutate(
-    Time = (hour(DateLocal) * 60 + minute(DateLocal) + second(DateLocal) / 60) /
-      (24 * 60),
-    HarmTOD = Time * 2 * pi,
-    HarmDOY = (DOY / 365) * 2 * pi, # Convert to radians
-    Biomass = replace(Biomass, Biomass > 10000, 10000),
-    Bathy = replace(Bathy, Bathy > 6000, 6000),
-    Depth = replace(Depth, Depth > 500, 500),
-    Mesh = replace(Mesh, Mesh > 400, 400),
-    Mesh = as.numeric((Mesh)),
-    Tow = as.character(Tow),
-    SST = replace(SST, SST < 5, 5),
-    SST = replace(SST, SST > 30, 30),
-    # Tow = replace(Tow, Tow == "Unknown", "Horizontal"),
-    BiomassMethod = as.factor(BiomassMethod),
-    Project = as.character(Project)
-  ) %>%
-  droplevels()
-
-# Calculate Gear_Mesh
-dat <- dat %>% unite(Gear_Mes2, NetType, Mesh, remove = FALSE)
-
-# Code OPC/LOPC
-dat <- dat %>%
-  mutate(
-    LOPC_Type = case_when(
-      grepl("SS", dat$Project, fixed = TRUE) ~ "OPC",
-      grepl("IN", dat$Project, fixed = TRUE) ~ "LOPC"
-    )
-  )
-dat$Gear_Mes2[dat$NetType2 == "LOPC"] <- dat$LOPC_Type[dat$NetType2 == "LOPC"]
-
-# Create dfs for CPR, Net, LOPC
-# Define each dataset
-dat_Net <- dat %>% filter(NetType2 == "Net") %>% droplevels()
-dat_CPR <- dat %>% filter(NetType2 == "CPR") %>% droplevels()
-dat_LOPC <- dat %>% filter(NetType2 == "LOPC") %>% droplevels()
-
-# Times are OK for CPR and LOPC, but lots of 00:00 time for nets, which need to have a random time
-dat_Net$Time[dat_Net$Time == 0] <- runif(sum(dat_Net$Time == 0), 0, 1) # Random time between 0 and 24 hrs for those with Time = 0; n = 3419 00:00 time
-dat_Net <- dat_Net %>% mutate(HarmTOD = Time * 2 * pi)
-
-##### MODELS - NETS = LM (NO RANDOM EFFECT + NO GAMMA + Gear_Mes2) #####
+## M1 LMER (Gaussian, log10 response)
+# Conditional R2: 0.818; Marginal R2: 0.574
 m1 <- lmer(
-  log10(Biomass) ~ BiomassMethod +
+  log10_Biomass ~ Method +
     log10(Chl) +
-    fHarmonic(HarmTOD, k = 1) * exp(-Depth / 1000) +
-    ns(Bathy, df = 3) +
-    fHarmonic(HarmDOY, k = 1) * ns(SST, 3) +
-    (1 | Gear_Mes2),
-  data = dat_Net
-)
-summary(m1)
-#
-r.squaredGLMM(m1) # Fixed r2 = 71.4%, Total r2 = 87.4%
-fPlotBiomassLMERs(m1, "Biomass", "log10")
-dev.copy2pdf(file = "Figures/Biomass_Nets_Final.pdf", paper = "A4r")
-saveRDS(m1, "ModelOutput/Biomass_Nets_Final.rds")
-
-############################################################
-##### MODELS - CPR = LM (NO RANDOM EFFECT + NO GAMMA + ALL SAME SURVEY SO NO RANDOM EFFECT AND NO DEPTH) #####
-m1 <- lm(
-  log10(Biomass) ~ log10(Chl) +
-    fHarmonic(HarmTOD, k = 1) +
-    ns(Bathy, df = 3) +
-    fHarmonic(HarmDOY, k = 1) * ns(SST, 3),
-  data = dat_CPR
-)
-summary(m1) # r2 = 19.5%
-anova(m1)
-fPlotBiomassLM(m1, "Biomass_lm1")
-dev.copy2pdf(file = "Figures/Biomass_CPR_Final.pdf", paper = "A4r") #
-# par(mfrow = c(2,2))
-# plot(m1)
-saveRDS(m1, "ModelOutput/Biomass_CPR_Final.rds")
-
-##### MODELS - LOPC = LM (NO RANDOM EFFECT + NO GAMMA + FIXED EFFECT FOR OPC/LOPC) #####
-m1 <- lm(
-  log10(Biomass) ~ LOPC_Type +
-    log10(Chl) +
-    fHarmonic(HarmTOD, k = 1) * exp(-Depth / 1000) +
-    ns(Bathy, df = 3) +
-    fHarmonic(HarmDOY, k = 1) * ns(SST, 3),
-  data = dat_LOPC
-)
-summary(m1) # r2 = 55.5%
-anova(m1)
-fPlotBiomassLM(m1, "Biomass_lm1")
-dev.copy2pdf(file = "Figures/Biomass_LOPC_Final.pdf", paper = "A4r") #
-# par(mfrow = c(2,2))
-# plot(m1)
-saveRDS(m1, "ModelOutput/Biomass_LOPC_Final.rds")
-
-##### ***MODELS - ALL = LMER (RANDOM EFFECT + NO GAMMA) #####
-m1 <- lmer(
-  log10(Biomass) ~ BiomassMethod +
-    log10(Chl) +
-    fHarmonic(HarmTOD, k = 1) * exp(-Depth / 1000) +
-    ns(Bathy, df = 3) +
-    fHarmonic(HarmDOY, k = 1) * ns(SST, 3) +
-    (1 | Gear_Mes2),
+    ns(Bathy, df = 2) +
+    harmonic(HarmDOY, k = 1) +
+    Depth +
+    Mesh +
+    (1 | Gear),
   data = dat
 )
-summary(m1)
-r.squaredGLMM(m1) # Fixed r2 = 58.3%, Total r2 = 82.3%
-fPlotBiomassLMERs(m1, "Biomass", "log10")
-dev.copy2pdf(
-  file = "Figures/Biomass_All_Final_UnequalWeighting.pdf",
-  paper = "A4r"
-) #
-saveRDS(m1, "ModelOutput/Biomass_All_Final_UnequalWeighting.rds")
 
-# Give Nets, CPR and LOPC equal weighting
-Summary <- dat %>% group_by(NetType2) %>% summarise(N = n())
-dat <- dat %>%
-  mutate(
-    WtVec = case_when(
-      NetType2 == "Net" ~ 1 / Summary$N[3] * nrow(dat),
-      NetType2 == "CPR" ~ 1 / Summary$N[1] * nrow(dat),
-      NetType2 == "LOPC" ~ 1 / Summary$N[2] * nrow(dat)
-    )
-  )
-Mn <- mean(dat$WtVec)
-dat$WtVec <- dat$WtVec / Mn
-sum(dat$WtVec) # Check - correct!
+## Quick visreg covariate plots ----
+# GREAT. Looks identical
+library(visreg)
+par(mfrow = c(2, 3))
+visreg(m1, "Chl", scale = "linear", gg = FALSE)
+visreg(m1, "Bathy", scale = "linear", gg = FALSE)
+visreg(m1, "HarmDOY", scale = "linear", gg = FALSE)
+visreg(m1, "Depth", scale = "linear", gg = FALSE)
+visreg(m1, "Mesh", scale = "linear", gg = FALSE)
+visreg(m1, "Method", scale = "linear", gg = FALSE)
+par(mfrow = c(1, 1))
 
-m1 <- lmer(
-  log10(Biomass) ~ BiomassMethod +
+
+## Summary — HTML diagnostic report ----
+fModelDiagnosticsHTML(
+  model = m1,
+  re.form = NA,
+  response_scale = FALSE
+)
+
+
+## m2 ------
+# Conditional R2: 0.820; Marginal R2: 0.576
+m2 <- lmer(
+  log10_Biomass ~ Method +
     log10(Chl) +
-    fHarmonic(HarmTOD, k = 1) * exp(-Depth / 1000) +
-    ns(Bathy, df = 3) +
-    fHarmonic(HarmDOY, k = 1) * ns(SST, 3) +
-    (1 | Gear_Mes2),
-  weights = WtVec,
+    ns(Bathy, df = 2) +
+    harmonic(HarmDOY, k = 1) +
+    exp(-Depth / 1000) +
+    Mesh +
+    harmonic(HarmTOD, k = 1) +
+    (1 | Gear),
   data = dat
 )
-summary(m1)
-r.squaredGLMM(m1) # Fixed r2 = 59.5%, Total r2 = 82.4%
-fPlotBiomassLMERs(m1, "Biomass", "log10")
-dev.copy2pdf(
-  file = "Figures/BiomassModel_All_Final_EqualWeighting.pdf",
-  paper = "A4r"
-) #
-saveRDS(m1, "ModelOutput/Biomass_All_Final_EqualWeighting.rds")
+
+
+## Summary — HTML diagnostic report ----
+fModelDiagnosticsHTML(
+  model = m2,
+  re.form = NA,
+  response_scale = FALSE,
+)
+
+
+## m3 ------
+# Add intereaction between TOD and Depth
+# Conditional R2: 0.820; Marginal R2: 0.581
+# m2 still the best overall but this has the best marginal
+m3 <- lmer(
+  log10_Biomass ~ Method +
+    log10(Chl) +
+    ns(Bathy, df = 2) +
+    harmonic(HarmDOY, k = 1) +
+    Mesh +
+    harmonic(HarmTOD, k = 1) * exp(-Depth / 1000) +
+    (1 | Gear),
+  data = dat
+)
+
+
+## Summary — HTML diagnostic report ----
+fModelDiagnosticsHTML(
+  model = m3,
+  re.form = NA,
+  response_scale = FALSE,
+)
+
+## m4 ------
+# Try a log link on m1
+# Conditional R2: 0.789; Marginal R2: 0.646
+# Best marginal.
+m4 <- glmer(
+  Biomass ~ Method +
+    log10(Chl) +
+    ns(Bathy, df = 2) +
+    harmonic(HarmDOY, k = 1) +
+    Depth +
+    Mesh +
+    (1 | Gear),
+  family = Gamma(link = "log"),
+  data = dat
+)
+
+
+## Summary — HTML diagnostic report ----
+fModelDiagnosticsHTML(
+  model = m4,
+  re.form = NA,
+  response_scale = FALSE,
+)
+
+## m5 ------
+# m3 with gamma log link
+# Conditional R2: 0.792; Marginal R2: 0.648
+# Best marginal
+m5 <- glmer(
+  Biomass ~ Method +
+    log10(Chl) +
+    ns(Bathy, df = 2) +
+    harmonic(HarmDOY, k = 1) +
+    Mesh +
+    harmonic(HarmTOD, k = 1) * exp(-Depth / 1000) +
+    (1 | Gear),
+  family = Gamma(link = "log"),
+  data = dat
+)
+
+
+## Summary — HTML diagnostic report ----
+fModelDiagnosticsHTML(
+  model = m5,
+  re.form = NA,
+  response_scale = FALSE,
+)
+
+
+## m6 ------
+# m5 + Latitude * DOY
+# CConditional R2: 0.809; Marginal R2: 0.632
+#
+
+m6 <- glmer(
+  Biomass ~ Method +
+    log10(Chl) +
+    ns(Bathy, df = 2) +
+    Mesh +
+    harmonic(HarmTOD, k = 1) * exp(-Depth / 1000) +
+    ns(Latitude, 2) * harmonic(HarmDOY, k = 2) +
+    (1 | Gear),
+  family = Gamma(link = "log"),
+  data = dat,
+  control = glmerControl(
+    calc.derivs = FALSE,
+    optimizer = "nloptwrap",
+    optCtrl = list(algorithm = "NLOPT_LN_BOBYQA")
+  )
+)
+
+
+## Summary — HTML diagnostic report ----
+fModelDiagnosticsHTML(
+  model = m6,
+  re.form = NA,
+  response_scale = FALSE,
+)
+
+## m7 ------
+# m6 replacing Gear and Mesh with Gear_Mesh
+# Conditional R2: 0.854; Marginal R2: 0.758
+# Best Conditional and Marginal so far
+
+m7 <- glmer(
+  Biomass ~ Method +
+    log10(Chl) +
+    ns(Bathy, df = 2) +
+    harmonic(HarmTOD, k = 1) * exp(-Depth / 1000) +
+    ns(Latitude, 2) * harmonic(HarmDOY, k = 2) +
+    (1 | Gear_Mesh),
+  family = Gamma(link = "log"),
+  data = dat,
+  control = glmerControl(
+    calc.derivs = FALSE,
+    optimizer = "nloptwrap",
+    optCtrl = list(algorithm = "NLOPT_LN_BOBYQA")
+  )
+)
+
+
+## Summary — HTML diagnostic report ----
+fModelDiagnosticsHTML(
+  model = m7,
+  re.form = NA,
+  response_scale = FALSE,
+)
+
+
+## m8 ------
+# m7 + (1 | Project)
+# Conditional R2: 0.881; Marginal R2: 0.692
+# Best Conditional but worse Marginal
+
+m8 <- glmer(
+  Biomass ~ Method +
+    log(Chl) +
+    ns(Bathy, df = 2) +
+    harmonic(HarmTOD, k = 1) * exp(-Depth / 1000) +
+    ns(Latitude, 2) * harmonic(HarmDOY, k = 2) +
+    (1 | Gear_Mesh) +
+    (1 | Project),
+  family = Gamma(link = "log"),
+  data = dat,
+  control = glmerControl(
+    calc.derivs = FALSE,
+    optimizer = "nloptwrap",
+    optCtrl = list(algorithm = "NLOPT_LN_BOBYQA")
+  )
+)
+
+
+## Summary — HTML diagnostic report ----
+fModelDiagnosticsHTML(
+  model = m8,
+  re.form = NA,
+  response_scale = FALSE,
+)
+
+
+compare_performance(m4, m5, m6, m7, m8, rank = TRUE)
+plot(compare_performance(m4, m5, m6, m7, m8))
+
+# ══════════════════════════════════════════════════════════════════════════════
+#### EXAMPLE 1 — GLMM (Gamma, log link) ####
+# Use when response is strictly positive and right-skewed (raw Biomass).
+# DHARMa residuals are ESSENTIAL — standard Pearson/deviance residuals are
+# not valid for GLMMs.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════════════════════════
+#### EXAMPLE 2 — LMER (Gaussian, log10 response) — Nets ####
+# Use when response has been log10-transformed to meet normality assumptions.
+# Random effect accounts for variance across gear type × mesh size combinations.
+# ══════════════════════════════════════════════════════════════════════════════

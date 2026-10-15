@@ -675,3 +675,23 @@ PlotGLMM_Map <- function(model, FileName) {
 
   return(out)
 }
+
+
+check_model_pw <- function(mdl) {
+  # plot.check_model() auto-prints when panel = TRUE.  Capture the return value
+  # silently via invisible() so the auto-print is suppressed, then apply the
+  # theme and return the single patchwork for the caller to print exactly once.
+  cm_raw <- invisible(plot(check_model(mdl, verbose = TRUE), panel = TRUE))
+
+  cm <- cm_raw &
+    theme(
+      text = element_text(size = 8),
+      plot.title = element_text(size = 8),
+      axis.text = element_text(size = 6),
+      axis.title = element_text(size = 6),
+      legend.text = element_text(size = 6),
+      strip.text = element_text(size = 6)
+    )
+
+  return(cm)
+}

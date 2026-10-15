@@ -5,135 +5,175 @@
 # Jase Updated 21/09/2026
 
 library(tidyverse)
-# library(janitor) # install.packages("janitor")
 
-### MOVE ALL THIS TO GLOBALZOOBIOMASS SO WE CREATE EVERYTING IN ONE PLACE.
-# WE THEN FILTER FOR AUSTRALIA OR DIFFERENT DATATYPES WHEN WE GO TO USE
-# THE DATA FOR STATISTICAL MODELLING
 
-dat1 <- read_delim(
-  "Data/BiomassDatabase20190620.csv",
-  delim = "\t",
-  na = "(null)"
+# Load the data: n = 257,474 ----
+dat <- read_rds("../GlobalZoopBiomass/Output/dat_cleaned.rds") %>%
+  sf::st_as_sf(
+    coords = c("Longitude", "Latitude"),
+    remove = FALSE,
+    crs = "EPSG:4326"
+  )
+
+bndry <- sf::st_bbox(
+  c(xmin = 80, xmax = 179, ymax = 0, ymin = -60),
+  crs = sf::st_crs("EPSG:4326")
 ) %>%
-  filter(NET_TYPE != "Optical Plankton Counter (OPC-2T)") %>% # Remove because I re-add it again with more data below.
-  mutate(PROJECT_ID = as.character(PROJECT_ID))
+  sf::st_as_sfc()
 
-dat2 <- read_csv("Data/MNF_LOPC_Biomass.csv", na = "NaN") %>%
-  mutate(
-    SAMPLE_DATE_LOCAL = dmy_hms(SAMPLE_DATE_LOCAL),
-    SAMPLE_DATE_UTC = dmy_hms(SAMPLE_DATE_UTC),
-    RECORD_ID = as.character(RECORD_ID),
-    SAMPLE_ID = as.character(SAMPLE_ID),
-    NET_MESH_SIZE = 300
+## Filter for Australia! (n = 51,412)
+dat <- sf::st_filter(dat, bndry)
+# 50K
+
+ggplot(data = dat, aes(x = Biomass)) +
+  geom_histogram() +
+  facet_wrap(vars(Method), scales = "free") +
+  scale_y_log10()
+
+
+## Check LOPC again
+
+lopc <- read_csv(
+  "/Users/jason/GitHub/GlobalZoopBiomass/Data/MNF_LOPC_Biomass.csv"
+) %>%
+  filter(
+    !PROJECT_ID %in% c("IN2017v04", "IN2018v03", "IN2018v04", "IN2018v05")
   ) %>%
-  mutate(
-    DAY_NIGHT = case_when(
-      hour(SAMPLE_DATE_LOCAL) > 6 & hour(SAMPLE_DATE_LOCAL) < 18 ~ "day",
-      hour(SAMPLE_DATE_LOCAL) <= 6 | hour(SAMPLE_DATE_LOCAL) >= 18 ~ "night"
-    )
-  )
+  filter(BIOMASS < 5000)
 
-dat3 <- read_rds("../GlobalZoopBiomass/Output/dat_cleaned.rds")
+ggplot(data = lopc, aes(x = BIOMASS)) +
+  geom_histogram() +
+  facet_wrap(vars(PROJECT_ID), scales = "free") +
+  scale_y_log10()
 
-
-dat <- bind_rows(dat1, dat2)
-
-dat <- janitor::clean_names(dat, case = "upper_camel")
 
 dat <- dat %>%
-  rename(
-    DateLocal = SampleDateLocal,
-    DateUTC = SampleDateUtc,
-    Year = SampleYear,
-    Month = SampleMonth,
-    Day = SampleDay
+  mutate(
+    Chl = if_else(Chl > 5, 5, Chl),
+    Depth = if_else(Depth > 500, 500, Depth),
+    Bathy = if_else(Bathy > 6000, 6000, Bathy),
+    Biomass = if_else(Biomass > 2000, 2000, Biomass) # Max 2g m-3
   )
 
-# Function which adds satellite SST, Chl and Bathy data to any data frame with "Latitude" and "Longitude" variables
-dat <- fAddEnviro(dat, EnviroDir, bathy_file)
 
-summary(dat$SST)
+# Check the data ----
+
+## Biomass methods
+unique(dat$Method)
+# "Dry"     "CPR"     "Wet"     "Disp"    "Settled" "LOPC"
+
+unique(dat$Units)
+# mg/m3            ml/m3
+
+# dat_ln <- dat %>% filter(Units == "ml/m3 log normal")
+
+# Check combinations
+dat %>%
+  sf::st_drop_geometry() %>%
+  dplyr::count(Method, Units)
+
+# Check Tow Type
+unique(dat$Tow)
+
+hist(log10(dat$Biomass))
+hist(dat$TimeLocal)
+hist(dat$Mesh)
+hist(log10(dat$Volume))
+
+hist(dat$Depth)
+
+# Check environmental data
+
+#### SST
+summary(dat$SST) # No NAs
+hist(dat$SST)
+ggplot(data = dat, aes(x = SST, y = Latitude)) +
+  geom_point()
+
+
+#### Chl
+summary(dat$Chl) # 1 NA - Code needs a rewrite. Not worth the time for 1 point. Just remove below. It looks to be on land anyway.
+hist(dat$Chl)
+hist(log10(dat$Chl))
+
+
+ggplot(data = dat, aes(x = Chl, y = Latitude)) +
+  geom_point()
+
+ggplot(
+  data = dat,
+  aes(x = log10(Chl), y = lubridate::month(Date))
+) +
+  geom_point()
+# TODO JDE - Not convinced that the Chl in the southern hemisphere is correct, but it looks good in the North.
+
+dat <- dat %>%
+  filter(!is.na(Chl)) # Remove NAs
+
 summary(dat$Chl)
-summary(dat$Bathy)
 
-dat <- dat %>%
-  rename(
-    Mesh = NetMeshSize,
-    Project = ProjectId,
-    SampleID = SampleId,
-    RecordID = RecordId,
-    Tow = TowType
-  ) %>%
-  mutate(
-    Chl = replace(Chl, Chl > 10, 10),
-    DOY = yday(DateLocal),
-    Bathy = replace(Bathy, Bathy > -20, -20),
-    Bathy = abs(Bathy), # Make Bathymetry positive
-    MinDepth = replace(MinDepth, MinDepth == -999, NA),
-    MaxDepth = replace(MaxDepth, MaxDepth == -999, NA),
-    Depth = (MinDepth + MaxDepth) / 2, # There are a few where the depths are reversed due to the sampling design (upcast of MOCNESS)
-    BiomassMethod = str_replace(BiomassMethod, "wet mass", "Wet"),
-    BiomassMethod = str_replace(BiomassMethod, "dry mass", "Dry"),
-    BiomassMethod = str_replace(
-      BiomassMethod,
-      "displacement volume",
-      "Displacement"
-    ),
-    BiomassMethod = str_replace(BiomassMethod, "settled volume", "Settled"),
-    BiomassMethod = str_replace(
-      BiomassMethod,
-      "Estimated Wet Weight from BioVolume",
-      "EstimatedWetWeight"
-    ),
-    BiomassMethod = as.factor(BiomassMethod),
-    Tow = str_replace(Tow, "horizontal tow", "Horizontal"),
-    Tow = str_replace(Tow, "double oblique tow", "Oblique"),
-    Tow = str_replace(Tow, "oblique tow", "Oblique"),
-    Tow = str_replace(Tow, "vertical", "Vertical"),
-    Tow = str_replace(Tow, "unknown", "Unknown"),
-    Tow = as.factor(Tow),
-    DayNight = str_to_title(DayNight),
-    DayNight = as.factor(DayNight),
-    Project = as.factor(Project)
-  ) %>%
-  filter(!is.na(SST)) %>%
-  filter(!is.na(Chl)) %>% # Remove NAs
-  filter(Biomass >= 0) %>% # Remove negative biomass
-  filter(!is.na(Depth))
-
-summary(dat) # There are zeros in the Biomass data
-sum(dat$Biomass == 0) # 212 from the LOPC - delete
-
-dat <- dat %>%
-  mutate(
-    NetType2 = case_when(
-      NetType == "LOPC" ~ "LOPC",
-      NetType == "Continuous plankton recorder" ~ "CPR",
-      TRUE ~ "Net"
-    ),
-    NetType2 = as.factor(NetType2)
-  ) %>%
-  filter(Biomass > 0) %>% # n = 54,033
-  mutate(
-    Tow = as.character(Tow),
-    Tow = replace(Tow, NetType == "Continuous plankton recorder", "Surface"),
-    Tow = as.factor(Tow)
+ggplot() +
+  geom_point(
+    data = dat,
+    aes(x = Longitude, y = Latitude, fill = log10(Chl), colour = log10(Chl))
+  ) +
+  cmocean::scale_fill_cmocean(
+    name = "algae",
+    aesthetics = c("colour", "fill"),
+    limits = c(-2, 0),
+    oob = scales::squish
+  ) +
+  geom_sf(
+    data = rnaturalearth::ne_countries(returnclass = "sf"),
+    fill = "grey50"
+  ) + #world coastline
+  theme_bw() +
+  coord_sf(
+    xlim = sf::st_bbox(bndry)[c("xmin", "xmax")],
+    ylim = sf::st_bbox(bndry)[c("ymin", "ymax")]
   )
 
-# Sort out Project for CPRs
-Routes <- read_csv("Data/cpr_route.csv")
-dat <- left_join(dat, Routes, by = c("SampleID" = "SAMPLE_ID"))
-rm(Routes)
 
-# Move the CPR route to the Project column
-dat$Project <- as.character(dat$Project)
-dat$Project[dat$Project == "597"] <- dat$ROUTE[dat$Project == "597"]
+### Bathymetry
 
-dat <- dat %>%
-  dplyr::select(-ROUTE) %>%
-  mutate(Project = as.factor(Project))
+summary(dat$Bathy)
+hist(dat$Bathy)
 
-saveRDS(dat, file = "Output/BiomassData.rds")
+# Plot the data to check
+ggplot() +
+  geom_point(
+    data = dat,
+    aes(x = Longitude, y = Latitude, colour = log10(Bathy))
+  ) +
+  cmocean::scale_fill_cmocean(name = "deep", aesthetics = c("colour", "fill")) +
+  geom_sf(
+    data = rnaturalearth::ne_countries(returnclass = "sf"),
+    fill = "grey50"
+  ) + #world coastline
+  theme_bw() +
+  coord_sf(
+    xlim = sf::st_bbox(bndry)[c("xmin", "xmax")],
+    ylim = sf::st_bbox(bndry)[c("ymin", "ymax")]
+  )
 
-write_csv(dat, "Output/FinalBiomassData.csv")
+
+## Plot Longhurst Provinces to check
+ggplot() +
+  geom_point(
+    data = dat,
+    aes(x = Longitude, y = Latitude, colour = Longhurst_ProvCode),
+    show.legend = FALSE
+  ) +
+  geom_sf(
+    data = rnaturalearth::ne_countries(returnclass = "sf"),
+    fill = "grey50"
+  ) + #world coastline
+  theme_bw() +
+  coord_sf(
+    xlim = sf::st_bbox(bndry)[c("xmin", "xmax")],
+    ylim = sf::st_bbox(bndry)[c("ymin", "ymax")]
+  )
+
+
+##
+write_csv(x = dat, file = "Output/FinalBiomassData.csv")
