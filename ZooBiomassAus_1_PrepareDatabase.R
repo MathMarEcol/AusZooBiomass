@@ -33,28 +33,14 @@ ggplot(data = dat, aes(x = Biomass)) +
 
 ## Check LOPC again
 
-lopc <- read_csv(
-  "/Users/jason/GitHub/GlobalZoopBiomass/Data/MNF_LOPC_Biomass.csv"
-) %>%
-  filter(
-    !PROJECT_ID %in% c("IN2017v04", "IN2018v03", "IN2018v04", "IN2018v05")
-  ) %>%
-  filter(BIOMASS < 5000)
-
-ggplot(data = lopc, aes(x = BIOMASS)) +
-  geom_histogram() +
-  facet_wrap(vars(PROJECT_ID), scales = "free") +
-  scale_y_log10()
-
-
 dat <- dat %>%
   mutate(
     Chl = if_else(Chl > 5, 5, Chl),
     Depth = if_else(Depth > 500, 500, Depth),
     Bathy = if_else(Bathy > 6000, 6000, Bathy),
     Biomass = if_else(Biomass > 2000, 2000, Biomass) # Max 2g m-3
-  )
-
+  ) %>%
+  filter(!Project %in% c("1099", "2", "21"))
 
 # Check the data ----
 
@@ -176,4 +162,8 @@ ggplot() +
 
 
 ##
-write_csv(x = dat, file = "Output/FinalBiomassData.csv")
+
+write_rds(
+  x = dat %>% sf::st_drop_geometry(),
+  file = "Output/FinalBiomassData.rds"
+)
