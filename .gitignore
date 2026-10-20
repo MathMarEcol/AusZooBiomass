@@ -3,3 +3,6 @@
 .RData
 .Ruserdata
 .DS_Store
+Output/rbathy.tif
+Output/rchl_clim.tif
+Output/rsst_clim.tif
