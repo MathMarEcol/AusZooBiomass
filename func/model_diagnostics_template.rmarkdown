@@ -1,0 +1,347 @@
+---
+title: "`r params$model_label` Model Diagnostics"
+date: today
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    theme: flatly
+    code-fold: true
+    fig-width: 10
+    fig-height: 7
+    page-layout: full
+params:
+  rds_path: ""          # path to the serialised model RDS
+  model_label: ""       # human-readable label shown in subtitle
+  utils_path: ""        # path to ZooBiomassAus_0_Utils.R
+  func_path: ""         # path to func/fPlotBiomassLMERs.R
+  covariates: NULL      # named list or NULL
+  interactions: NULL    # list of 2-element vectors or NULL
+  random_effects: NULL  # character vector of grouping vars, NULL = auto-detect, character(0) = none
+  re_form_na: true      # TRUE = NA (marginalise), FALSE = NULL (BLUPs)
+  response_scale: false
+  show_rug: true
+  show_partial_residuals: false
+  ncol: NULL
+  ci_method: NULL
+  has_comparison: false # TRUE when compare_models list was supplied via the RDS bundle
+  n_simulations: 100    # passed to check_model(); lower = faster PPC
+  check_model_checks: NULL # NULL = all panels; character vector to restrict panels
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center"
+)
+
+library(withr)
+library(parameters)
+library(performance)
+library(see)
+library(patchwork)
+library(lme4)
+library(lmerTest)
+library(glmmTMB)
+library(splines) # ns() used in model formulae
+library(utils4mme) # harmonic() / fHarmonic() used in model formulae
+library(marginaleffects)
+library(insight)
+
+source(params$utils_path)
+source(params$func_path)
+
+# Load model + data bundle saved by fModelDiagnosticsHTML()
+bundle <- readRDS(params$rds_path)
+model <- bundle$model
+compare_models <- bundle$compare_models # NULL when not supplied
+
+# Restore the original data to the global environment so that
+# marginaleffects::predictions() can find it by name when building newdata grids.
+#
+# Model class dispatch for $call$data:
+#   - merMod (lmerMod / glmerMod) → S4 slot: model@call$data
+#   - glmmTMB / lm / glm          → S3 element: model$call$data
+if (!is.null(bundle$data)) {
+  data_name <- if (is(model, "merMod")) {
+    as.character(model@call$data)
+  } else {
+    as.character(model$call$data)
+  }
+  assign(data_name, bundle$data, envir = globalenv())
+}
+
+re.form <- if (isTRUE(params$re_form_na)) NA else NULL
+```
+
+## Model Formula
+
+```{r formula, results='asis'}
+# ── Model function & estimation method ────────────────────────────────────────
+is_merMod <- is(model, "merMod")
+is_glmerMod <- is(model, "glmerMod")
+is_lmerMod <- is(model, "lmerMod")
+is_glmmTMB <- is(model, "glmmTMB")
+is_glm_base <- is(model, "glm") && !is_merMod
+is_lm_base <- is(model, "lm") && !is_merMod && !is_glm_base
+
+if (is_glmmTMB) {
+  fn_name <- "glmmTMB"
+} else if (is_glmerMod) {
+  fn_name <- "glmer"
+} else if (is_lmerMod) {
+  fn_name <- "lmer"
+} else if (is_glm_base) {
+  fn_name <- "glm"
+} else if (is_lm_base) {
+  fn_name <- "lm"
+} else {
+  fn_name <- class(model)[1]
+}
+
+# ── REML / ML for (g)lmer ─────────────────────────────────────────────────────
+# glmmTMB uses ML by default; isREML() is not defined for it.
+if (is_merMod) {
+  reml_used <- tryCatch(isREML(model), error = function(e) NA)
+  est_method <- if (isTRUE(reml_used)) {
+    "REML"
+  } else if (isFALSE(reml_used)) {
+    "ML"
+  } else {
+    "unknown"
+  }
+} else if (is_glmmTMB) {
+  est_method <- "ML"
+} else {
+  est_method <- NULL
+}
+
+# ── Family / error structure ───────────────────────────────────────────────────
+fam_obj <- tryCatch(family(model), error = function(e) NULL)
+if (!is.null(fam_obj)) {
+  fam_str <- paste0(fam_obj$family, "(link = \"", fam_obj$link, "\")")
+} else {
+  fam_str <- NULL
+}
+
+# ── Formula (pretty-printed) ───────────────────────────────────────────────────
+formula_lines <- deparse(stats::formula(model), width.cutoff = 60)
+formula_str <- paste(formula_lines, collapse = "\n")
+
+# ── Render ─────────────────────────────────────────────────────────────────────
+cat("**Fitting function:** `", fn_name, "`\n\n", sep = "")
+
+if (!is.null(fam_str)) {
+  cat("**Error structure / family:** `", fam_str, "`\n\n", sep = "")
+} else {
+  cat(
+    "**Error structure:** Gaussian (identity link) — log\u2081\u2080-transformed response\n\n"
+  )
+}
+
+if (!is.null(est_method)) {
+  cat("**Estimation method:** ", est_method, "\n\n", sep = "")
+}
+
+cat("**Formula:**\n\n```\n", formula_str, "\n```\n", sep = "")
+```
+
+---
+
+## 1 · Model Parameters
+
+*Fixed effects, random effects variance components, fit indices (REML, R², AIC/BIC).*
+
+```{r params-table}
+params_args <- list(model)
+if (!is.null(params$ci_method)) {
+  params_args$ci_method <- params$ci_method
+}
+
+withr::with_options(
+  list(parameters_mixed_info = TRUE),
+  print(do.call(model_parameters, params_args))
+)
+```
+
+---
+
+## 2 · Model Diagnostics
+
+*Posterior predictive check, linearity, homogeneity of variance, influential observations, normality of residuals, normality of random effects.*
+
+```{r ppc-note, results='asis'}
+# Issue 6 fix: add a note explaining the log10 x-axis on the PPC for log-link
+# models.  Without this, the rescaled PPC can look unfamiliar to readers who
+# expect the default linear-scale density plot.
+.fam_note <- tryCatch(family(model), error = function(e) NULL)
+if (!is.null(.fam_note) && .fam_note$link == "log") {
+  cat(
+    "> **Note on the Posterior Predictive Check:** The x-axis is on a",
+    " **log\u2081\u2080 scale** because the response (Biomass) spans several",
+    " orders of magnitude. The simulated density lines (light) should closely",
+    " track the observed line (dark) — if they do, the model captures the",
+    " distribution of the data well.\n\n"
+  )
+}
+```
+
+```{r diagnostics, fig.height=10}
+# Build check_model() call args — only add `check` when the caller restricted panels.
+# n_simulations controls PPC simulation count (default 100; package default is 250).
+.cm_args <- list(model, verbose = FALSE, n_simulations = params$n_simulations)
+if (!is.null(params$check_model_checks)) {
+  .cm_args$check <- params$check_model_checks
+}
+cm_obj <- do.call(check_model, .cm_args)
+pdf(nullfile())
+cm_raw <- plot(cm_obj)
+dev.off()
+
+# For models with a log link (e.g. Gamma(link = "log")), the PPC is plotted on
+# the raw response scale, which is extremely right-skewed and looks like a
+# right angle.  Apply scale_x_log10() to the PPC panel (first element of the
+# patchwork) so the density curves are readable.
+.fam_check <- tryCatch(family(model), error = function(e) NULL)
+if (!is.null(.fam_check) && .fam_check$link == "log") {
+  cm_raw[[1]] <- cm_raw[[1]] + scale_x_log10()
+}
+
+# Apply shared theme to all panels
+cm_themed <- cm_raw &
+  theme(
+    text = element_text(size = 10),
+    plot.title = element_text(size = 10),
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 8),
+    legend.text = element_text(size = 8),
+    strip.text = element_text(size = 8)
+  )
+
+# Stagger x-axis labels on the collinearity (VIF) panel so they are readable.
+# The VIF panel title contains "Collinearity"; find it by inspecting panel labels.
+vif_idx <- which(vapply(
+  seq_along(cm_themed),
+  function(i) {
+    ttl <- cm_themed[[i]]$labels$title
+    isTRUE(grepl("ollinearity|VIF", ttl, ignore.case = TRUE))
+  },
+  logical(1)
+))
+
+if (length(vif_idx) == 1L) {
+  # Build a lookup from raw term labels → clean variable names using the same
+  # AST-walking approach as .raw_var() in fPlotBiomassLMERs.R.
+  # insight::find_predictors() returns the bare variable names; we match them
+  # against the term labels that appear on the VIF x-axis.
+  .raw_var_from_term <- function(term_str) {
+    term_str <- trimws(term_str)
+    if (grepl("(", term_str, fixed = TRUE)) {
+      expr <- tryCatch(str2lang(term_str), error = function(e) NULL)
+      if (!is.null(expr)) {
+        .first_sym <- function(node) {
+          if (is.symbol(node)) {
+            return(as.character(node))
+          }
+          if (is.call(node)) {
+            for (i in seq(2L, length(node))) {
+              hit <- .first_sym(node[[i]])
+              if (!is.null(hit)) return(hit)
+            }
+          }
+          NULL
+        }
+        hit <- .first_sym(expr)
+        if (!is.null(hit)) return(hit)
+      }
+    }
+    term_str
+  }
+
+  vif_panel <- cm_themed[[vif_idx]]
+  vif_built <- ggplot2::ggplot_build(vif_panel)
+  x_labels <- vif_built$layout$panel_params[[1]]$x$get_labels()
+  x_breaks <- vif_built$layout$panel_params[[1]]$x$get_breaks()
+  clean_labels <- vapply(x_labels, .raw_var_from_term, character(1))
+
+  cm_themed[[vif_idx]] <- vif_panel +
+    scale_x_discrete(
+      breaks = x_breaks,
+      labels = clean_labels,
+      guide = guide_axis(n.dodge = 2)
+    )
+}
+
+cm_themed
+```
+
+---
+
+## 3 · Covariate Effects
+
+*Marginal predictions (fixed effects, random effects marginalised out) with 95 % confidence intervals. Random-effect grouping variables are shown as caterpillar plots of BLUPs (conditional modes ± 1.96 SE).*
+
+```{r covariate-effects, fig.height=8}
+# params$random_effects arrives as NULL (auto-detect) or a character vector.
+# Quarto serialises character(0) as NULL, so we treat NULL as auto-detect here
+# and let fPlotBiomassLMERs() call .extract_random_grouping_vars() internally.
+fPlotBiomassLMERs(
+  model = model,
+  covariates = params$covariates,
+  interactions = params$interactions,
+  random_effects = params$random_effects,
+  re.form = re.form,
+  response_scale = params$response_scale,
+  show_rug = params$show_rug,
+  show_partial_residuals = params$show_partial_residuals,
+  ncol = params$ncol
+)
+```
+
+---
+
+```{r model-comparison-section, results='asis', echo=FALSE}
+if (isTRUE(params$has_comparison) && !is.null(compare_models)) {
+  cat("## 4 · Model Comparison\n\n")
+  cat(
+    "*Ranked performance indices across all compared models.",
+    " Higher rank = better overall fit.*\n\n"
+  )
+}
+```
+
+```{r model-comparison-table, eval=isTRUE(params$has_comparison) && !is.null(compare_models)}
+# compare_performance() uses match.call() internally to derive model labels.
+# do.call() does not preserve symbol names in that call frame, so we instead
+# assign each model to a named variable in a temporary environment and build
+# the call using as.symbol() so compare_performance() sees the real names.
+cmp_names <- names(compare_models) # e.g. c("m4", "m5", "m6", "m7", "m8")
+
+# Assign models into a local env whose parent is globalenv() so that
+# compare_performance() and all package functions remain on the search path.
+cmp_env <- new.env(parent = globalenv())
+for (.nm in cmp_names) {
+  assign(.nm, compare_models[[.nm]], envir = cmp_env)
+}
+
+# Build and evaluate: compare_performance(m4, m5, …, rank = TRUE)
+cmp_call_ranked <- as.call(c(
+  list(quote(compare_performance)),
+  lapply(cmp_names, as.symbol),
+  list(rank = TRUE)
+))
+eval(cmp_call_ranked, envir = cmp_env)
+```
+
+```{r model-comparison-plot, eval=isTRUE(params$has_comparison) && !is.null(compare_models), fig.height=7}
+# Build the same call without rank = TRUE for the radar plot
+cmp_call_plot <- as.call(c(
+  list(quote(compare_performance)),
+  lapply(cmp_names, as.symbol)
+))
+plot(eval(cmp_call_plot, envir = cmp_env))
+```
+
