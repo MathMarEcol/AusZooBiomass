@@ -25,6 +25,9 @@ params:
   show_partial_residuals: false
   ncol: NULL
   ci_method: NULL
+  has_comparison: false # TRUE when compare_models list was supplied via the RDS bundle
+  n_simulations: 100    # passed to check_model(); lower = faster PPC
+  check_model_checks: NULL # NULL = all panels; character vector to restrict panels
 ---
 
 ```{r setup, include=FALSE}
@@ -42,6 +45,7 @@ library(see)
 library(patchwork)
 library(lme4)
 library(lmerTest)
+library(glmmTMB)
 library(splines) # ns() used in model formulae
 library(utils4mme) # harmonic() / fHarmonic() used in model formulae
 library(marginaleffects)
@@ -53,14 +57,14 @@ source(params$func_path)
 # Load model + data bundle saved by fModelDiagnosticsHTML()
 bundle <- readRDS(params$rds_path)
 model <- bundle$model
+compare_models <- bundle$compare_models # NULL when not supplied
 
 # Restore the original data to the global environment so that
 # marginaleffects::predictions() can find it by name when building newdata grids.
 #
-# Issue 3 fix: use is(model, "merMod") to branch explicitly rather than a
-# silent tryCatch fallback.
-#   - merMod (covers both lmerMod and glmerMod) → @call$data
-#   - lm / glm                                  → $call$data
+# Model class dispatch for $call$data:
+#   - merMod (lmerMod / glmerMod) → S4 slot: model@call$data
+#   - glmmTMB / lm / glm          → S3 element: model$call$data
 if (!is.null(bundle$data)) {
   data_name <- if (is(model, "merMod")) {
     as.character(model@call$data)
@@ -80,10 +84,13 @@ re.form <- if (isTRUE(params$re_form_na)) NA else NULL
 is_merMod <- is(model, "merMod")
 is_glmerMod <- is(model, "glmerMod")
 is_lmerMod <- is(model, "lmerMod")
+is_glmmTMB <- is(model, "glmmTMB")
 is_glm_base <- is(model, "glm") && !is_merMod
 is_lm_base <- is(model, "lm") && !is_merMod && !is_glm_base
 
-if (is_glmerMod) {
+if (is_glmmTMB) {
+  fn_name <- "glmmTMB"
+} else if (is_glmerMod) {
   fn_name <- "glmer"
 } else if (is_lmerMod) {
   fn_name <- "lmer"
@@ -96,6 +103,7 @@ if (is_glmerMod) {
 }
 
 # ── REML / ML for (g)lmer ─────────────────────────────────────────────────────
+# glmmTMB uses ML by default; isREML() is not defined for it.
 if (is_merMod) {
   reml_used <- tryCatch(isREML(model), error = function(e) NA)
   est_method <- if (isTRUE(reml_used)) {
@@ -105,6 +113,8 @@ if (is_merMod) {
   } else {
     "unknown"
   }
+} else if (is_glmmTMB) {
+  est_method <- "ML"
 } else {
   est_method <- NULL
 }
@@ -180,10 +190,13 @@ if (!is.null(.fam_note) && .fam_note$link == "log") {
 ```
 
 ```{r diagnostics, fig.height=10}
-# plot.see_check_model() always calls .safe_print_plots() internally (first render).
-# Suppress that by redirecting to a null device during the plot() call,
-# then apply theme and print the returned patchwork exactly once.
-cm_obj <- check_model(model, verbose = FALSE)
+# Build check_model() call args — only add `check` when the caller restricted panels.
+# n_simulations controls PPC simulation count (default 100; package default is 250).
+.cm_args <- list(model, verbose = FALSE, n_simulations = params$n_simulations)
+if (!is.null(params$check_model_checks)) {
+  .cm_args$check <- params$check_model_checks
+}
+cm_obj <- do.call(check_model, .cm_args)
 pdf(nullfile())
 cm_raw <- plot(cm_obj)
 dev.off()
@@ -286,4 +299,48 @@ fPlotBiomassLMERs(
   show_partial_residuals = params$show_partial_residuals,
   ncol = params$ncol
 )
+```
+
+---
+
+```{r model-comparison-section, results='asis', echo=FALSE}
+if (isTRUE(params$has_comparison) && !is.null(compare_models)) {
+  cat("## 4 · Model Comparison\n\n")
+  cat(
+    "*Ranked performance indices across all compared models.",
+    " Higher rank = better overall fit.*\n\n"
+  )
+}
+```
+
+```{r model-comparison-table, eval=isTRUE(params$has_comparison) && !is.null(compare_models)}
+# compare_performance() uses match.call() internally to derive model labels.
+# do.call() does not preserve symbol names in that call frame, so we instead
+# assign each model to a named variable in a temporary environment and build
+# the call using as.symbol() so compare_performance() sees the real names.
+cmp_names <- names(compare_models) # e.g. c("m4", "m5", "m6", "m7", "m8")
+
+# Assign models into a local env whose parent is globalenv() so that
+# compare_performance() and all package functions remain on the search path.
+cmp_env <- new.env(parent = globalenv())
+for (.nm in cmp_names) {
+  assign(.nm, compare_models[[.nm]], envir = cmp_env)
+}
+
+# Build and evaluate: compare_performance(m4, m5, …, rank = TRUE)
+cmp_call_ranked <- as.call(c(
+  list(quote(compare_performance)),
+  lapply(cmp_names, as.symbol),
+  list(rank = TRUE)
+))
+eval(cmp_call_ranked, envir = cmp_env)
+```
+
+```{r model-comparison-plot, eval=isTRUE(params$has_comparison) && !is.null(compare_models), fig.height=7}
+# Build the same call without rank = TRUE for the radar plot
+cmp_call_plot <- as.call(c(
+  list(quote(compare_performance)),
+  lapply(cmp_names, as.symbol)
+))
+plot(eval(cmp_call_plot, envir = cmp_env))
 ```

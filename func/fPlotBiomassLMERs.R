@@ -1,12 +1,12 @@
 # fPlotBiomassLMERs.R
-# Covariate effect plots for lm / lmer / glmer models
-# Uses marginaleffects + ggplot2 + patchwork
+# Covariate effect plots for lm / lmer / glmer / glmmTMB models
+# Uses marginaleffects::plot_predictions() + ggplot2 + patchwork
 #
 # Author: Jason Everett
 # Updated: October 2026
 #
 # Dependencies:
-#   marginaleffects, ggplot2, patchwork, insight
+#   marginaleffects, ggplot2, patchwork, insight, lme4, glmmTMB
 #   (all available on CRAN)
 #
 # Usage:
@@ -16,7 +16,6 @@
 library(marginaleffects)
 library(ggplot2)
 library(patchwork)
-library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
 
 
 # ── Helper: auto-detect interaction pairs from model formula ──────────────────
@@ -44,12 +43,14 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
 
   # Drop the response and random-effect parts; keep only fixed-effect RHS.
   # nobars() strips random-effect bars; it moved from lme4 to reformulas.
+  # glmmTMB and merMod both carry | bars in their formula, so we always try
+  # nobars() first; plain lm/glm formulas have no bars and nobars() is a no-op.
   .nobars <- if (requireNamespace("reformulas", quietly = TRUE)) {
     reformulas::nobars
   } else {
     lme4::nobars
   }
-  rhs <- if (is(model, "merMod")) {
+  rhs <- if (is(model, "merMod") || is(model, "glmmTMB")) {
     .nobars(fml)[-2] # remove response (LHS)
   } else {
     stats::delete.response(stats::terms(fml))
@@ -137,51 +138,6 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
 }
 
 
-# ── Helper: compute partial residuals for a focal variable ────────────────────
-#
-# Partial residual for variable `var`:
-#   e_partial = residuals(model) + X_var %*% beta_var
-#
-# For lm / lmer the residuals are on the link (= response) scale, so the
-# partial residuals are also on the link scale.  Back-transformation to the
-# response scale (10^x) is handled in .plot_one_covariate() when
-# response_scale = TRUE.
-#
-# For glmer with a non-identity link, partial residuals are suppressed entirely
-# because the working-residual decomposition is on the link scale and is
-# misleading when plotted on the response scale.  The caller checks is_glm
-# before calling this function.
-
-.partial_residuals <- function(model, var) {
-  mm <- model.matrix(model) # full fixed-effect design matrix
-  cf <- lme4::fixef(model) # named fixed-effect coefficients
-  # fall back for plain lm objects
-  if (inherits(model, "lm") && !inherits(model, "lmerMod")) {
-    cf <- stats::coef(model)
-  }
-
-  # Identify columns of the model matrix that belong to this variable.
-  # Column names for spline / harmonic terms look like:
-  #   "ns(Bathy, df = 2)1", "harmonic(HarmDOY, k = 1)sin1", etc.
-  # We match any column whose name contains the raw variable name.
-  col_idx <- grep(var, colnames(mm), fixed = TRUE)
-
-  if (length(col_idx) == 0L) {
-    warning(
-      "No model-matrix columns found for variable '",
-      var,
-      "'. Partial residuals will not be shown."
-    )
-    return(NULL)
-  }
-
-  partial_fit <- as.numeric(mm[, col_idx, drop = FALSE] %*% cf[col_idx])
-  resids <- stats::residuals(model)
-
-  partial_fit + resids
-}
-
-
 # ── Helper: axis labels for harmonic variables ─────────────────────────────────
 
 .harmonic_breaks_tod <- function() {
@@ -202,6 +158,16 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
 
 
 # ── Helper: build a single covariate panel ────────────────────────────────────
+#
+# Uses marginaleffects::plot_predictions() as the underlying engine.
+# plot_predictions() handles:
+#   - continuous variables → geom_ribbon + geom_line
+#   - factor/character variables → geom_pointrange
+#   - rug via the `rug` argument
+#   - observed data points via the `points` argument
+#   - back-transformation via the `transform` argument
+#
+# We add labs(), theme_bw(), and harmonic/Bathy axis overrides on top.
 
 .plot_one_covariate <- function(
   model,
@@ -213,146 +179,66 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
   show_partial_residuals,
   fam_info
 ) {
-  mf <- insight::get_data(model)
-  is_factor <- is.factor(mf[[var]]) || is.character(mf[[var]])
-
-  if (is_factor) {
-    nd <- rlang::exec(
-      datagrid,
-      model = model,
-      !!!setNames(list(unique(mf[[var]])), var)
-    )
-  } else {
-    nd <- rlang::exec(
-      datagrid,
-      model = model,
-      !!!setNames(
-        list(seq(
-          min(mf[[var]], na.rm = TRUE),
-          max(mf[[var]], na.rm = TRUE),
-          length.out = 200
-        )),
-        var
-      )
-    )
-  }
-
-  # type = "response" behaviour differs by model class:
-  #   lmer/lm  — returns predictions on the model's response scale
-  #              (e.g. log10(Biomass) if the response was log10-transformed).
-  #              Apply 10^ manually if response_scale = TRUE.
-  #   glmer    — marginaleffects back-transforms through the link automatically,
-  #              returning predictions in mg/m³.  Never apply 10^ manually.
-  preds <- predictions(
-    model,
-    newdata = nd,
-    re.form = re.form,
-    type = "response"
-  )
-
-  # Issue 2 fix: only apply 10^ back-transform for lmer/lm, not glmer
-  if (!fam_info$is_glm && response_scale) {
-    preds$estimate <- 10^preds$estimate
-    preds$conf.low <- 10^preds$conf.low
-    preds$conf.high <- 10^preds$conf.high
-  }
-
-  # Issue 4 fix: y-axis label depends on model type and response_scale
-  #   glmer (any response_scale) → always on response scale → "Biomass (mg/m³)"
-  #   lmer + response_scale TRUE → back-transformed          → "Biomass (mg/m³)"
-  #   lmer + response_scale FALSE → still on log10 scale     → "log10(Biomass)"
+  # y-axis label: glmer always on response scale; lmer depends on response_scale
   ylab <- if (fam_info$is_glm || response_scale) {
     expression("Biomass (mg/m"^3 * ")")
   } else {
     expression(log[10] * "(Biomass)")
   }
 
-  if (is_factor) {
-    p <- ggplot(
-      preds,
-      aes(
-        x = .data[[var]],
-        y = estimate,
-        ymin = conf.low,
-        ymax = conf.high
-      )
-    ) +
-      geom_pointrange(colour = "steelblue", linewidth = 0.7, size = 0.5) +
-      labs(x = xlab, y = ylab) +
-      theme_bw(base_size = 10) +
-      theme(
-        axis.text.x = element_text(angle = 30, hjust = 1),
-        axis.text.y = element_text(),
-        axis.ticks = element_line()
-      )
+  # Back-transform function: only for lmer with response_scale = TRUE.
+  # glmer predictions are already on the response scale via type = "response".
+  transform_fn <- if (!fam_info$is_glm && response_scale) {
+    function(x) 10^x
   } else {
-    p <- ggplot(preds, aes(x = .data[[var]])) +
-      geom_ribbon(
-        aes(ymin = conf.low, ymax = conf.high),
-        fill = "steelblue",
-        alpha = 0.25
-      ) +
-      geom_line(aes(y = estimate), colour = "steelblue", linewidth = 0.9) +
-      labs(x = xlab, y = ylab) +
-      theme_bw(base_size = 10) +
-      theme(
-        axis.text.x = element_text(),
-        axis.text.y = element_text(),
-        axis.ticks = element_line()
+    NULL
+  }
+
+  # points argument: show observed data for lmer (suppressed for glmer because
+  # the response scale differs from the link scale used internally).
+  pts_alpha <- if (show_partial_residuals && !fam_info$is_glm) 0.25 else 0
+
+  # glmmTMB's marginaleffects sanitizer rejects vcov = NULL (the default).
+  # Pass vcov = TRUE explicitly for glmmTMB; leave NULL for all other classes
+  # so existing behaviour is unchanged.
+  vcov_arg <- if (is(model, "glmmTMB")) TRUE else NULL
+
+  p <- plot_predictions(
+    model,
+    condition = var,
+    re.form = re.form,
+    vcov = vcov_arg,
+    type = "response",
+    transform = transform_fn,
+    rug = show_rug,
+    points = pts_alpha
+  ) +
+    labs(x = xlab, y = ylab) +
+    theme_bw(base_size = 10) +
+    theme(axis.ticks = element_line())
+
+  # Factor variables: tilt x-axis labels
+  mf <- insight::get_data(model)
+  if (is.factor(mf[[var]]) || is.character(mf[[var]])) {
+    p <- p + theme(axis.text.x = element_text(angle = 30, hjust = 1))
+  }
+
+  # Harmonic / Bathy axis overrides
+  if (var == "HarmTOD") {
+    brks <- .harmonic_breaks_tod()
+    p <- p + scale_x_continuous(breaks = brks$breaks, labels = brks$labels)
+  }
+  if (var == "HarmDOY") {
+    brks <- .harmonic_breaks_doy()
+    p <- p +
+      scale_x_continuous(
+        breaks = brks$breaks,
+        labels = brks$labels,
+        guide = guide_axis(angle = 45)
       )
-
-    # Issue 5 fix: suppress partial residuals entirely for glmer models.
-    # For glmer, the working-residual decomposition is on the link scale and
-    # is misleading when plotted on the response scale.
-    if (show_partial_residuals && !fam_info$is_glm) {
-      pr <- .partial_residuals(model, var)
-      if (!is.null(pr)) {
-        pr_df <- data.frame(
-          x = mf[[var]],
-          pr = if (response_scale) 10^pr else pr
-        )
-        p <- p +
-          geom_point(
-            data = pr_df,
-            aes(x = x, y = pr),
-            inherit.aes = FALSE,
-            colour = "grey30",
-            alpha = 0.25,
-            size = 0.8,
-            shape = 16
-          )
-      }
-    }
-
-    if (show_rug) {
-      p <- p +
-        geom_rug(
-          data = mf,
-          aes(x = .data[[var]]),
-          inherit.aes = FALSE,
-          colour = "grey40",
-          alpha = 0.4,
-          length = unit(0.015, "npc"),
-          sides = "b"
-        )
-    }
-
-    if (var == "HarmTOD") {
-      brks <- .harmonic_breaks_tod()
-      p <- p + scale_x_continuous(breaks = brks$breaks, labels = brks$labels)
-    }
-    if (var == "HarmDOY") {
-      brks <- .harmonic_breaks_doy()
-      p <- p +
-        scale_x_continuous(
-          breaks = brks$breaks,
-          labels = brks$labels,
-          guide = guide_axis(angle = 45)
-        )
-    }
-    if (var == "Bathy") {
-      p <- p + scale_x_reverse()
-    }
+  }
+  if (var == "Bathy") {
+    p <- p + scale_x_reverse()
   }
 
   p
@@ -360,11 +246,16 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
 
 
 # ── Helper: build an interaction panel ────────────────────────────────────────
+#
+# Uses plot_predictions() with a two-element condition list:
+#   condition = list(var1, var2 = v2_vals)
+# where v2_vals are the unique factor levels (factor/character) or the
+# 10th/33rd/67th/90th percentiles (continuous).
 
 .plot_interaction <- function(model, vars, re.form, response_scale, fam_info) {
   stopifnot(length(vars) == 2)
   var1 <- vars[1] # x-axis variable
-  var2 <- vars[2] # grouping variable
+  var2 <- vars[2] # grouping / colour variable
 
   mf <- insight::get_data(model)
   is_factor2 <- is.factor(mf[[var2]]) || is.character(mf[[var2]])
@@ -372,66 +263,42 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
   v2_vals <- if (is_factor2) {
     unique(mf[[var2]])
   } else {
-    quantile(mf[[var2]], probs = c(0.1, 0.33, 0.67, 0.9), na.rm = TRUE)
-  }
-
-  nd <- rlang::exec(
-    datagrid,
-    model = model,
-    !!!setNames(
-      list(
-        seq(
-          min(mf[[var1]], na.rm = TRUE),
-          max(mf[[var1]], na.rm = TRUE),
-          length.out = 100
-        ),
-        v2_vals
-      ),
-      c(var1, var2)
+    round(
+      quantile(mf[[var2]], probs = c(0.1, 0.33, 0.67, 0.9), na.rm = TRUE),
+      digits = 1L
     )
-  )
-
-  preds <- predictions(
-    model,
-    newdata = nd,
-    re.form = re.form,
-    type = "response"
-  )
-
-  # Issue 2 fix: only apply 10^ back-transform for lmer/lm, not glmer
-  if (!fam_info$is_glm && response_scale) {
-    preds$estimate <- 10^preds$estimate
-    preds$conf.low <- 10^preds$conf.low
-    preds$conf.high <- 10^preds$conf.high
   }
 
-  # Issue 4 fix: y-axis label
+  # y-axis label
   ylab <- if (fam_info$is_glm || response_scale) {
     expression("Biomass (mg/m"^3 * ")")
   } else {
     expression(log[10] * "(Biomass)")
   }
 
-  if (!is_factor2) {
-    preds[[var2]] <- round(preds[[var2]], 1)
+  transform_fn <- if (!fam_info$is_glm && response_scale) {
+    function(x) 10^x
+  } else {
+    NULL
   }
-  preds[[var2]] <- factor(preds[[var2]])
 
-  p <- ggplot(
-    preds,
-    aes(
-      x = .data[[var1]],
-      y = estimate,
-      colour = .data[[var2]],
-      fill = .data[[var2]]
-    )
+  # Build named condition list: list(var1, var2 = v2_vals)
+  cond <- setNames(list(var1, v2_vals), c("", var2))
+  # plot_predictions expects the first element unnamed (x-axis variable name)
+  # and the second named (grouping variable with its values).
+  cond <- c(list(var1), setNames(list(v2_vals), var2))
+
+  # glmmTMB's marginaleffects sanitizer rejects vcov = NULL (the default).
+  vcov_arg <- if (is(model, "glmmTMB")) TRUE else NULL
+
+  p <- plot_predictions(
+    model,
+    condition = cond,
+    re.form = re.form,
+    vcov = vcov_arg,
+    type = "response",
+    transform = transform_fn
   ) +
-    geom_ribbon(
-      aes(ymin = conf.low, ymax = conf.high),
-      alpha = 0.15,
-      colour = NA
-    ) +
-    geom_line(linewidth = 0.8) +
     scale_colour_viridis_d(option = "plasma", end = 0.85) +
     scale_fill_viridis_d(option = "plasma", end = 0.85) +
     labs(
@@ -447,6 +314,7 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
       plot.title = element_text(size = 9, face = "bold")
     )
 
+  # Harmonic axis overrides for x-axis variable
   if (var1 == "HarmTOD") {
     brks <- .harmonic_breaks_tod()
     p <- p + scale_x_continuous(breaks = brks$breaks, labels = brks$labels)
@@ -482,7 +350,10 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
 # (nested effects, crossed effects, etc.) correctly.
 
 .extract_random_grouping_vars <- function(model) {
-  if (!is(model, "merMod")) {
+  # insight::find_random() supports merMod, glmmTMB, and many other mixed-model
+  # classes.  We use it as the primary method and fall back to character(0) for
+  # plain lm / glm objects that have no random effects.
+  if (!is(model, "merMod") && !is(model, "glmmTMB")) {
     return(character(0L))
   }
   rnd <- tryCatch(
@@ -516,8 +387,30 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
 # @return A ggplot object.
 
 .plot_random_effect <- function(model, grp_var, fam_info, response_scale) {
-  # Extract random-effect conditional modes and SEs via lme4::ranef()
-  re_obj <- lme4::ranef(model, condVar = TRUE)
+  # Extract random-effect conditional modes and SEs.
+  # glmmTMB::ranef() returns a list of lists: $cond$<grp_var> (and optionally
+  # $zi$<grp_var>).  lme4::ranef() returns a flat list: $<grp_var>.
+  # We normalise both to a single data frame + optional condVar array.
+  is_glmmTMB <- is(model, "glmmTMB")
+
+  if (is_glmmTMB) {
+    re_obj_raw <- tryCatch(
+      ranef(model, condVar = TRUE),
+      error = function(e) NULL
+    )
+    if (is.null(re_obj_raw)) {
+      warning("ranef() failed for glmmTMB model. Skipping.", call. = FALSE)
+      return(NULL)
+    }
+    # Use the conditional ($cond) component; fall back to first component
+    re_obj <- if (!is.null(re_obj_raw$cond)) {
+      re_obj_raw$cond
+    } else {
+      re_obj_raw[[1L]]
+    }
+  } else {
+    re_obj <- lme4::ranef(model, condVar = TRUE)
+  }
 
   if (!grp_var %in% names(re_obj)) {
     warning(
@@ -533,9 +426,10 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
 
   # condVar attribute: a 3-D array [n_terms, n_terms, n_levels]
   # We want the intercept term (first row/col) for each level.
-  cond_var_arr <- attr(re_df, "postVar") # lme4 < 1.1-30 name
+  # glmmTMB uses "condVar"; lme4 uses "postVar" (old) or "condVar" (new).
+  cond_var_arr <- attr(re_df, "condVar")
   if (is.null(cond_var_arr)) {
-    cond_var_arr <- attr(re_df, "condVar") # lme4 >= 1.1-30 name
+    cond_var_arr <- attr(re_df, "postVar") # lme4 < 1.1-30 name
   }
 
   # Build a tidy data frame: level, blup, se, lower, upper
@@ -621,10 +515,11 @@ library(rlang) # `:=` walrus operator for tidy evaluation in datagrid()
       y = paste0(grp_var, " (level no.)"),
       title = paste0("Random: ", grp_var)
     ) +
+    scale_y_discrete(guide = guide_axis(n.dodge = 2)) +
     theme_bw(base_size = 10) +
     theme(
       plot.title = element_text(size = 9, face = "bold"),
-      axis.text.y = element_text(size = 7),
+      axis.text.y = element_text(size = 3),
       axis.ticks = element_line()
     )
 
@@ -690,21 +585,25 @@ fPlotBiomassLMERs <- function(
   # Detect model family / link once and pass to all helpers
   fam_info <- .model_family_info(model)
 
-  # Auto-build covariates from model predictors if not supplied
+  # Auto-detect random-effect grouping variables first (needed below to
+  # exclude them from the fixed-effect covariate list when auto-detecting).
+  # NULL means "auto-detect"; character(0) means "plot none".
+  if (is.null(random_effects)) {
+    random_effects <- .extract_random_grouping_vars(model)
+  }
+
+  # Auto-build covariates from model predictors if not supplied.
+  # Exclude any variable that is also a random-effect grouping variable —
+  # those will be shown as BLUP caterpillar panels instead.
   if (is.null(covariates)) {
     pred_names <- insight::find_predictors(model)$conditional
+    pred_names <- setdiff(pred_names, random_effects)
     covariates <- setNames(as.list(pred_names), pred_names)
   }
 
   # Auto-detect interaction pairs from the model formula if not supplied
   if (is.null(interactions)) {
     interactions <- .extract_interactions(model)
-  }
-
-  # Auto-detect random-effect grouping variables if not supplied.
-  # NULL means "auto-detect"; character(0) means "plot none".
-  if (is.null(random_effects)) {
-    random_effects <- .extract_random_grouping_vars(model)
   }
 
   # 1. Individual covariate panels
