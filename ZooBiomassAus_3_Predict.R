@@ -12,7 +12,7 @@ library(tidyverse)
 library(ncdf4)
 library(tidyterra)
 
-reprocess <- FALSE
+reprocess <- TRUE
 
 # Month definitions ----
 month_names <- c(
@@ -46,7 +46,10 @@ if (isTRUE(reprocess)) {
 
   chl_base <- "/Volumes/T9/Copernicus/OCEANCOLOUR_GLO_BGC_L4_MY_009_104/cmems_obs-oc_glo_bgc-plankton_my_l4-multi-4km_P1M_202603"
 
-  chl_year_range <- 2003:2015 # adjust as needed
+  # Date range: January 2003 – June 2015 (inclusive)
+  date_start_yyyymm <- 200307L
+  date_end_yyyymm <- 201606L
+  date_suffix <- paste0("_", date_start_yyyymm, "_", date_end_yyyymm)
 
   chl_files <- list.files(
     chl_base,
@@ -55,8 +58,14 @@ if (isTRUE(reprocess)) {
     recursive = TRUE
   )
   chl_years <- as.integer(substr(basename(chl_files), 1, 4)) # chars 1-4 of YYYYMMDD... = YYYY
-  chl_files <- chl_files[chl_years %in% chl_year_range]
   chl_months <- as.integer(substr(basename(chl_files), 5, 6)) # chars 5-6 of YYYYMMDD... = MM
+  chl_yyyymm <- chl_years * 100L + chl_months
+  chl_files <- chl_files[
+    chl_yyyymm >= date_start_yyyymm & chl_yyyymm <= date_end_yyyymm
+  ]
+  chl_months <- chl_months[
+    chl_yyyymm >= date_start_yyyymm & chl_yyyymm <= date_end_yyyymm
+  ]
 
   chl_clim <- vector("list", 12)
 
@@ -76,14 +85,18 @@ if (isTRUE(reprocess)) {
   # 12-layer SpatRaster: one climatological mean per calendar month
   rchl <- terra::rast(chl_clim)
   names(rchl) <- gsub("\\d", "", month_names)
-  terra::writeRaster(rchl, "Output/rchl_clim.tif", overwrite = TRUE)
+  terra::writeRaster(
+    rchl,
+    paste0("Output/rchl_clim", date_suffix, ".tif"),
+    overwrite = TRUE
+  )
 
   # Load SST Data ----
   # Source: MODIS-Aqua L3m 4 km monthly composites (NASA OceanColor)
   # Variable: sst (degrees C)
   # Files: flat directory, named AQUA_MODIS.YYYYMMDD_YYYYMMDD.L3m.MO.SST.sst.4km.nc
   # Strategy: climatological monthly mean — average all available years per calendar month
-  # Note: year range matched to chl_year_range for consistency
+  # Note: date range matched to Chl (January 2003 – June 2015, inclusive)
 
   sst_base <- "/Volumes/T9/MODIS_AQUA/SST"
 
@@ -94,8 +107,14 @@ if (isTRUE(reprocess)) {
     full.names = TRUE
   )
   sst_years <- as.integer(substr(basename(sst_files), 12, 15)) # chars 12-15 = YYYY
-  sst_files <- sst_files[sst_years %in% chl_year_range]
   sst_months <- as.integer(substr(basename(sst_files), 16, 17)) # chars 16-17 = MM
+  sst_yyyymm <- sst_years * 100L + sst_months
+  sst_files <- sst_files[
+    sst_yyyymm >= date_start_yyyymm & sst_yyyymm <= date_end_yyyymm
+  ]
+  sst_months <- sst_months[
+    sst_yyyymm >= date_start_yyyymm & sst_yyyymm <= date_end_yyyymm
+  ]
 
   sst_clim <- vector("list", 12)
 
@@ -115,7 +134,11 @@ if (isTRUE(reprocess)) {
   # 12-layer SpatRaster: one climatological mean per calendar month
   rsst <- terra::rast(sst_clim)
   names(rsst) <- gsub("\\d", "", month_names)
-  terra::writeRaster(rsst, "Output/rsst_clim.tif", overwrite = TRUE)
+  terra::writeRaster(
+    rsst,
+    paste0("Output/rsst_clim", date_suffix, ".tif"),
+    overwrite = TRUE
+  )
 
   # Load Bathy Data ----
   # Source: GEBCO 2026 sub-ice topo GeoTIFF tiles
@@ -135,8 +158,8 @@ if (isTRUE(reprocess)) {
   terra::set.names(rbathy, "Bathy")
   terra::writeRaster(rbathy, "Output/rbathy.tif", overwrite = TRUE)
 } else {
-  rsst <- terra::rast("Output/rsst_clim.tif")
-  rchl <- terra::rast("Output/rchl_clim.tif")
+  rsst <- terra::rast("Output/rsst_clim_200301_201506.tif")
+  rchl <- terra::rast("Output/rchl_clim_200301_201506.tif")
   rbathy <- terra::rast("Output/rbathy.tif")
 }
 
@@ -231,14 +254,14 @@ month_dates <- lubridate::as_date(
 terra::time(pred_stack) <- month_dates
 
 
-write_rds(pred_stack, "Output/Biomass_m13_monthly.rds")
-write_rds(pred_annual, "Output/Biomass_m13_annual.rds")
+write_rds(pred_stack, paste0("Output/Biomass_m13_monthly", date_suffix, ".rds"))
+write_rds(pred_annual, paste0("Output/Biomass_m13_annual", date_suffix, ".rds"))
 
 
 # Write monthly stack ----
 terra::writeCDF(
   pred_stack,
-  filename = "Output/Biomass_m13_monthly.nc",
+  filename = paste0("Output/Biomass_m13_monthly", date_suffix, ".nc"),
   varname = "zooplankton_biomass",
   longname = "Zooplankton wet biomass predicted by m13 (glmmTMB Gamma-log)",
   unit = "mg m-3",
@@ -250,7 +273,7 @@ terra::writeCDF(
 # Write annual mean ----
 terra::writeCDF(
   pred_annual,
-  filename = "Output/Biomass_m13_annual.nc",
+  filename = paste0("Output/Biomass_m13_annual", date_suffix, ".nc"),
   varname = "zooplankton_biomass_annual",
   longname = "Annual mean zooplankton wet biomass predicted by m13 (glmmTMB Gamma-log)",
   unit = "mg m-3",
@@ -260,7 +283,10 @@ terra::writeCDF(
 
 
 # Append global attributes ----
-nc <- ncdf4::nc_open("Output/Biomass_m13_monthly.nc", write = TRUE)
+nc <- ncdf4::nc_open(
+  paste0("Output/Biomass_m13_monthly", date_suffix, ".nc"),
+  write = TRUE
+)
 ncdf4::ncatt_put(
   nc,
   0,

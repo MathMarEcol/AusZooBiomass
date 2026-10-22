@@ -4,5 +4,5 @@
 .Ruserdata
 .DS_Store
 Output/rbathy.tif
-Output/rchl_clim.tif
-Output/rsst_clim.tif
+Output/rchl_clim_*.tif
+Output/rsst_clim_*.tif
